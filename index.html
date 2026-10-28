@@ -18,18 +18,14 @@
     <style>
         body { font-family: 'Cairo', sans-serif; }
         
-        /* ضبط الطباعة لعزل كل نموذج وطباعته منفرداً */
         @media print {
-            .no-print, header, nav, footer, #mainContainer, #modalContainer, #toast-container { 
+            .no-print, header, nav, footer, #modalContainer, #toast-container { 
                 display: none !important; 
             }
             body { 
                 background: white !important; 
                 margin: 0 !important; 
                 padding: 0 !important; 
-            }
-            .print-only { 
-                display: block !important; 
             }
             #printableResolutionContainer {
                 display: block !important;
@@ -38,17 +34,16 @@
                 left: 0;
                 width: 100%;
                 margin: 0;
-                padding: 15mm;
+                padding: 12mm;
                 box-sizing: border-box;
             }
             #reportPrintableArea {
                 display: block !important;
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                margin: 0;
-                padding: 10mm;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
             }
         }
     </style>
@@ -70,7 +65,7 @@
                         <span id="cloudStatusBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10">
                             <i class="fa-solid fa-rotate animate-spin ml-1"></i> فحص الاتصال...
                         </span>
-                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.6.0</span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.7.0</span>
                     </h1>
                     <p class="text-emerald-200/90 text-xs font-semibold" id="topOrgTitle">الإدارة العامة لتقنية المعلومات والتحول الرقمي</p>
                 </div>
@@ -111,9 +106,8 @@
     <div id="printableResolutionContainer" class="hidden"></div>
 
     <script>
-    const SYSTEM_VERSION = "v3.6.0";
+    const SYSTEM_VERSION = "v3.7.0";
 
-    // تثبيت قيم السيرفر الافتراضية
     const DB_DEFAULT = {
         settings: {
             orgName: "المملكة العربية السعودية",
@@ -189,7 +183,6 @@
                 try {
                     const parsed = JSON.parse(raw);
                     this.db = Object.assign({}, DB_DEFAULT, parsed);
-                    // التأكد من تثبيت قيم السيرفر دائماً
                     if (!this.db.settings.supabaseUrl) this.db.settings.supabaseUrl = DB_DEFAULT.settings.supabaseUrl;
                     if (!this.db.settings.supabaseKey) this.db.settings.supabaseKey = DB_DEFAULT.settings.supabaseKey;
                 } catch(e) {
@@ -202,7 +195,6 @@
 
         saveDB(syncToCloud = true) {
             localStorage.setItem("LEAVE_SYS_DATA_V3", JSON.stringify(this.db));
-            localStorage.setItem("LEAVE_SYS_DB_DATA", JSON.stringify(this.db));
             this.updateHeaderUI();
             if (syncToCloud && this.supabaseClient) {
                 this.pushToCloud(false);
@@ -319,11 +311,6 @@
             sessionStorage.setItem("LEAVE_ACTIVE_UID", user.id);
             this.updateHeaderUI();
 
-            if (user.mustChangePass) {
-                this.renderForceChangePassView();
-                return;
-            }
-
             document.getElementById("userHeaderPanel").classList.remove("hidden");
             document.getElementById("navTabsContainer").classList.remove("hidden");
             document.getElementById("headerUserName").innerText = user.name;
@@ -425,21 +412,83 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
 
-        // --- الصفحة الرئيسية: المؤشرات والإحصاءات ---
+        // --- 1. تسجيل الدخول ---
+        renderLoginView() {
+            const container = document.getElementById("mainContainer");
+            container.innerHTML = `
+                <div class="max-w-md mx-auto my-12 bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden text-right p-8">
+                    <div class="text-center mb-6">
+                        <div class="w-20 h-20 bg-emerald-50 rounded-2xl mx-auto flex items-center justify-center p-2 mb-3 border border-emerald-100 shadow-sm">
+                            ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<i class="fa-solid fa-building-columns text-3xl text-emerald-700"></i>`}
+                        </div>
+                        <h2 class="text-lg font-black text-slate-800">${this.db.settings.generalDept}</h2>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">تسجيل الدخول لبوابة استئذان الموظفين</p>
+                    </div>
+
+                    <form onsubmit="App.handleLogin(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">اسم المستخدم</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-user absolute right-3.5 top-3.5 text-slate-400 text-sm"></i>
+                                <input type="text" id="loginUsername" required placeholder="admin أو halshuhiyb"
+                                    class="w-full pr-10 pl-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">كلمة المرور</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-lock absolute right-3.5 top-3.5 text-slate-400 text-sm"></i>
+                                <input type="password" id="loginPassword" required placeholder="••••••••"
+                                    class="w-full pr-10 pl-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <button type="button" onclick="App.togglePasswordVisibility('loginPassword', this)"
+                                    class="absolute left-3 top-3 text-slate-400 hover:text-slate-600">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-700/20 transition duration-150">
+                            <i class="fa-solid fa-arrow-right-to-bracket ml-2"></i> دخول النظام
+                        </button>
+                    </form>
+                </div>
+            `;
+        },
+
+        handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById("loginUsername").value.trim().toLowerCase();
+            const p = document.getElementById("loginPassword").value;
+
+            const user = this.db.users.find(x => x.username.toLowerCase() === u && x.password === p);
+            if (!user) {
+                alert("خطأ: اسم المستخدم أو كلمة المرور غير صحيحة!");
+                return;
+            }
+            this.setCurrentUser(user);
+        },
+
+        togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const isPass = input.type === 'password';
+            input.type = isPass ? 'text' : 'password';
+            btn.innerHTML = isPass ? `<i class="fa-solid fa-eye-slash text-emerald-700"></i>` : `<i class="fa-solid fa-eye"></i>`;
+        },
+
+        // --- 2. الرئيسية (المؤشرات والإحصاءات) ---
         renderDashboardView(container) {
             const isManager = ['super_admin', 'gen_manager', 'dept_manager', 'section_head'].includes(this.currentUser.role);
             const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
             const pendingMyRequests = myRequests.filter(r => r.status === 'pending').length;
             const approvedThisMonth = myRequests.filter(r => r.status === 'approved').length;
             const totalHours = myRequests.filter(r => r.status === 'approved').reduce((acc, curr) => acc + (parseFloat(curr.hours) || 0), 0);
-
-            // إحصاءات الإدارة للمدراء
             const totalPendingApprovals = this.db.requests.filter(r => r.status === 'pending').length;
             const allRequestsCount = this.db.requests.length;
 
             container.innerHTML = `
                 <div class="space-y-6">
-                    <!-- Welcome Hero -->
                     <div class="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
                             <span class="px-3 py-1 bg-white/10 rounded-full text-xs font-bold text-emerald-200 border border-white/10">
@@ -460,7 +509,6 @@
                         </div>
                     </div>
 
-                    <!-- Cards Stats Grid -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-right">
                         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
                             <div>
@@ -494,7 +542,7 @@
 
                         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
                             <div>
-                                <span class="text-slate-500 font-semibold text-xs">${isManager ? 'إجمالي طلبات المنظومة' : 'الرئيس المباشر المعتمد'}</span>
+                                <span class="text-slate-500 font-semibold text-xs">${isManager ? 'إجمالي طلبات المنظومة' : 'الرئيس المباشر'}</span>
                                 <h3 class="text-base font-black text-slate-800 mt-1 truncate max-w-[150px]">${isManager ? allRequestsCount + ' طلب' : 'مدير الإدارة'}</h3>
                             </div>
                             <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl">
@@ -503,7 +551,6 @@
                         </div>
                     </div>
 
-                    <!-- Recent Requests Table -->
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
@@ -557,13 +604,12 @@
             `;
         },
 
-        // --- شاشة التقارير الاحترافية المحدثة ---
+        // --- 3. شاشة التقارير الاحترافية (مضبوطة وبدون إكسل) ---
         renderReportsView(container) {
             const isGenManagerOrSuper = ['super_admin', 'gen_manager'].includes(this.currentUser.role);
             const isDeptManager = this.currentUser.role === 'dept_manager';
             const isManager = ['super_admin', 'gen_manager', 'dept_manager', 'section_head'].includes(this.currentUser.role);
 
-            // تحديد قائمة الموظفين المتاحين في الفلتر بحسب الصلاحيات
             let selectableUsers = [];
             if (isGenManagerOrSuper) {
                 selectableUsers = this.db.users;
@@ -581,32 +627,29 @@
                                 <i class="fa-solid fa-chart-pie text-emerald-700"></i>
                                 <span>${this.db.settings.reportHeaderTitle || 'مركز التقارير والإحصائيات التوثيقية'}</span>
                             </h2>
-                            <p class="text-xs text-slate-500 font-semibold mt-1">تصفية وحصر عمليات الاستئذان وتصديرها كجداول Excel أو طباعتها رسمياً</p>
+                            <p class="text-xs text-slate-500 font-semibold mt-1">تصفية وحصر عمليات الاستئذان واستخراج التقارير الرسمية</p>
                         </div>
                         <div class="flex gap-2">
-                            <button onclick="App.exportReportsCSV()" class="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5">
-                                <i class="fa-solid fa-file-excel"></i> تصدير Excel (CSV)
-                            </button>
-                            <button onclick="App.printFullReport()" class="px-4 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5">
-                                <i class="fa-solid fa-print"></i> طباعة التقرير
+                            <button onclick="window.print()" class="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-print"></i> طباعة التقرير الرسمي
                             </button>
                         </div>
                     </div>
 
-                    <!-- فلتر البحث والفرز الدقيق -->
+                    <!-- الفلتر الذكي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 no-print text-right">
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
                                 <label class="block font-bold text-slate-700 mb-1">من تاريخ</label>
-                                <input type="date" id="repFilterFrom" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
+                                <input type="date" id="repFilterFrom" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
                             </div>
                             <div>
                                 <label class="block font-bold text-slate-700 mb-1">إلى تاريخ</label>
-                                <input type="date" id="repFilterTo" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
+                                <input type="date" id="repFilterTo" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
                             </div>
                             <div>
                                 <label class="block font-bold text-slate-700 mb-1">حالة الطلب</label>
-                                <select id="repFilterStatus" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold">
+                                <select id="repFilterStatus" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold">
                                     <option value="ALL">جميع الحالات</option>
                                     <option value="approved">معتمد فقط</option>
                                     <option value="pending">قيد الانتظار</option>
@@ -617,31 +660,30 @@
                             ${isManager ? `
                                 <div>
                                     <label class="block font-bold text-slate-700 mb-1">تحديد الموظف</label>
-                                    <select id="repFilterUser" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold">
-                                        <option value="ALL">${isGenManagerOrSuper ? 'جميع الموظفين بالمنظومة' : 'جميع موظفي إدارتي'}</option>
+                                    <select id="repFilterUser" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold">
+                                        <option value="ALL">${isGenManagerOrSuper ? 'جميع موظفي المنظومة' : 'جميع موظفي إدارتي'}</option>
                                         <option value="${this.currentUser.id}">[استئذاناتي الشخصية فقط]</option>
                                         ${selectableUsers.filter(u => u.id !== this.currentUser.id).map(u => `<option value="${u.id}">${u.name} (${u.empId})</option>`).join("")}
                                     </select>
                                 </div>
                             ` : `
                                 <div class="flex items-end">
-                                    <div class="w-full p-2 bg-slate-100 border rounded-xl text-slate-600 font-bold">
-                                        عرض استئذاناتك الشخصية فقط
+                                    <div class="w-full p-2.5 bg-slate-100 border rounded-xl text-slate-600 font-bold text-center">
+                                        عرض استئذاناتك الشخصية
                                     </div>
                                 </div>
                             `}
                         </div>
 
                         <div class="flex justify-end pt-2 border-t">
-                            <button onclick="App.applyReportFilter()" class="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5">
+                            <button onclick="App.applyReportFilter()" class="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5">
                                 <i class="fa-solid fa-filter"></i> تطبيق التصفية والبحث
                             </button>
                         </div>
                     </div>
 
-                    <!-- مساحة التقرير للطباعة والعرض -->
-                    <div id="reportPrintableArea" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-4">
-                        <!-- ترويسة التقرير الرسمية -->
+                    <!-- التقرير المعروض والقابل للطباعة -->
+                    <div id="reportPrintableArea" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-5">
                         <div class="flex justify-between items-center border-b pb-4 text-right">
                             <div class="space-y-1">
                                 <h3 class="font-black text-sm text-slate-800">${this.db.settings.orgName}</h3>
@@ -653,20 +695,23 @@
                             </div>
                             <div class="text-left font-mono text-xs text-slate-500 space-y-1">
                                 <p>تاريخ الاستخراج: <strong>${new Date().toISOString().split("T")[0]}</strong></p>
-                                <p>المستخرج بواسطة: <strong>${this.currentUser.name}</strong></p>
+                                <p>المستخرج: <strong>${this.currentUser.name}</strong></p>
                             </div>
                         </div>
 
-                        <!-- إحصائيات التقرير الفورية -->
-                        <div id="reportQuickMetrics" class="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-center text-xs font-bold"></div>
+                        <!-- البطاقات الإحصائية للتقرير -->
+                        <div id="reportQuickMetrics" class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border text-center text-xs font-bold"></div>
 
-                        <!-- جدول النتائج -->
+                        <!-- الجدول -->
                         <div id="reportTableContainer" class="overflow-x-auto"></div>
                     </div>
                 </div>
             `;
 
-            this.applyReportFilter();
+            // تشغيل الفلتر مباشرة بعد بناء الواجهة
+            setTimeout(() => {
+                this.applyReportFilter();
+            }, 50);
         },
 
         applyReportFilter() {
@@ -678,7 +723,6 @@
 
             let list = this.db.requests;
 
-            // تحديد الصلاحية في الرؤية
             if (this.currentUser.role === 'employee') {
                 list = list.filter(r => r.userId === this.currentUser.id);
             } else if (this.currentUser.role === 'dept_manager') {
@@ -699,22 +743,22 @@
                 }
             }
 
-            // تطبيق فلاتر التاريخ والحالة
             if (from) list = list.filter(r => r.leaveDate >= from);
             if (to) list = list.filter(r => r.leaveDate <= to);
             if (status !== 'ALL') list = list.filter(r => r.status === status);
 
-            // تحديث البطاقات الإحصائية
             const approvedCount = list.filter(r => r.status === 'approved').length;
             const totalHours = list.filter(r => r.status === 'approved').reduce((acc, curr) => acc + (parseFloat(curr.hours) || 0), 0);
             const pendingCount = list.filter(r => r.status === 'pending').length;
+            const rejectedCount = list.filter(r => r.status === 'rejected').length;
 
             const metricsBox = document.getElementById("reportQuickMetrics");
             if (metricsBox) {
                 metricsBox.innerHTML = `
-                    <div>إجمالي السجلات: <span class="font-black text-slate-800">${list.length}</span></div>
-                    <div>الطلبات المعتمدة: <span class="font-black text-emerald-700">${approvedCount} (${totalHours.toFixed(1)} س)</span></div>
-                    <div>قيد الانتظار: <span class="font-black text-amber-600">${pendingCount}</span></div>
+                    <div class="p-2 bg-white rounded-lg border">إجمالي العمليات: <span class="font-black text-slate-800 block text-base">${list.length}</span></div>
+                    <div class="p-2 bg-white rounded-lg border">المعتمدة: <span class="font-black text-emerald-700 block text-base">${approvedCount} (${totalHours.toFixed(1)} س)</span></div>
+                    <div class="p-2 bg-white rounded-lg border">قيد الانتظار: <span class="font-black text-amber-600 block text-base">${pendingCount}</span></div>
+                    <div class="p-2 bg-white rounded-lg border">المرفوضة: <span class="font-black text-red-600 block text-base">${rejectedCount}</span></div>
                 `;
             }
 
@@ -757,17 +801,12 @@
             }
         },
 
-        printFullReport() {
-            window.print();
-        },
-
-        // --- طباعة القرار الرسمي وعزلها تماماً ---
+        // --- 4. طباعة القرار الرسمي المعزول ---
         printResolution(reqId) {
             const req = this.db.requests.find(x => x.id === reqId);
             if (!req) return;
             const printBox = document.getElementById("printableResolutionContainer");
 
-            // استخراج اسم المدير فقط بدون صفته الوظيفية
             let cleanApproverName = req.decisionBy || "المدير المختص";
             if (cleanApproverName.includes("(")) {
                 cleanApproverName = cleanApproverName.split("(")[0].trim();
@@ -775,7 +814,6 @@
 
             printBox.innerHTML = `
                 <div class="max-w-3xl mx-auto p-8 border-2 border-slate-800 rounded-2xl bg-white text-right space-y-6">
-                    <!-- الترويسة -->
                     <div class="flex justify-between items-center border-b-2 border-slate-800 pb-4">
                         <div class="text-right text-xs font-bold leading-relaxed">
                             <p>${this.db.settings.orgName}</p>
@@ -826,7 +864,6 @@
                         بناءً على الصلاحيات المخولة نظاماً، تمت الموافقة والاعتماد الإداري على طلب الاستئذان الموضح أعلاه، وتعتبر هذه الوثيقة إشعاراً رسمياً معتمداً وموثقاً إلكترونياً لدى الإدارة.
                     </div>
 
-                    <!-- التوقيع الإلكتروني والباركود: المعتمد فوق اسم المدير فقط دون صفته -->
                     <div class="flex justify-between items-end pt-6">
                         <div id="printQrCode" class="w-24 h-24 border p-1 bg-white rounded"></div>
                         <div class="text-center space-y-1">
@@ -852,49 +889,7 @@
             printBox.classList.add("hidden");
         },
 
-        // --- باقي دوال الإدارة والتحكم ---
-        handleLogoUpload(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                App.db.settings.logoData = evt.target.result;
-                App.saveDB();
-                App.setTab("settings");
-            };
-            reader.readAsDataURL(file);
-        },
-
-        removeLogo() {
-            if (confirm("هل تريد العودة للشعار الافتراضي؟")) {
-                this.db.settings.logoData = "";
-                this.saveDB();
-                this.setTab("settings");
-            }
-        },
-
-        saveGeneralSettings() {
-            this.db.settings.generalDept = document.getElementById("setGenDept").value.trim();
-            this.db.settings.reportHeaderTitle = document.getElementById("setReportTitle")?.value.trim() || "مركز التقارير والإحصائيات التوثيقية";
-            this.saveDB();
-            alert("تم حفظ وتحديث بيانات المنشأة وعناوين التقارير بنجاح.");
-        },
-
-        saveWorkTimes() {
-            this.db.settings.workStartTime = document.getElementById("setWorkStart").value;
-            this.db.settings.workEndTime = document.getElementById("setWorkEnd").value;
-            this.saveDB();
-            alert("تم حفظ مواعيد الدوام الرسمي وسيعتمدها النظام تلقائياً في حساب الساعات.");
-        },
-
-        saveSupabaseConfig() {
-            this.db.settings.supabaseUrl = document.getElementById("setSupabaseUrl").value.trim();
-            this.db.settings.supabaseKey = document.getElementById("setSupabaseKey").value.trim();
-            this.saveDB();
-            this.initSupabase();
-            alert("تم حفظ إعدادات Supabase وتفعيل الاتصال.");
-        },
-
+        // --- 5. الإعدادات والدوام والهيكل ---
         renderSettingsView(container) {
             container.innerHTML = `
                 <div class="mb-6 flex flex-wrap justify-between items-center gap-3">
@@ -911,7 +906,6 @@
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
-                    <!-- الهوية والشعار وعناوين التقارير -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
                             <i class="fa-solid fa-building-flag text-emerald-700"></i> بيانات المنشأة ونصوص التقارير
@@ -937,12 +931,11 @@
                         <button onclick="App.saveGeneralSettings()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ التعديلات</button>
                     </div>
 
-                    <!-- مواعيد الدوام والحساب الآلي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
                             <i class="fa-solid fa-clock text-emerald-700"></i> أوقات الدوام الرسمي (حساب آلي للساعات)
                         </h3>
-                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر بشكل آلي دون تدخل بشري.</p>
+                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر آلياً.</p>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">بداية الدوام الرسمي</label>
@@ -956,7 +949,6 @@
                         <button onclick="App.saveWorkTimes()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ مواعيد الدوام</button>
                     </div>
 
-                    <!-- الربط السحابي مع Supabase -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <div class="flex flex-wrap justify-between items-center border-b pb-2">
                             <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
@@ -999,7 +991,6 @@
                         <div id="connectionTestResult" class="hidden text-xs transition"></div>
                     </div>
 
-                    <!-- حوكمة الهيكل التنظيمي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <div class="flex justify-between items-center border-b pb-2">
                             <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
@@ -1053,7 +1044,6 @@
                         </div>
                     </div>
 
-                    <!-- النسخ الاحتياطي والتهيئة -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
                             <i class="fa-solid fa-database text-emerald-700"></i> مركز النسخ الاحتياطي واستعادة وتهيئة النظام
@@ -1085,7 +1075,175 @@
             `;
         },
 
-        // --- باقي دوال الإدارة والطلبات ---
+        // --- دوال مساعدة إدارية ---
+        handleLogoUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                App.db.settings.logoData = evt.target.result;
+                App.saveDB();
+                App.setTab("settings");
+            };
+            reader.readAsDataURL(file);
+        },
+
+        removeLogo() {
+            if (confirm("هل تريد العودة للشعار الافتراضي؟")) {
+                this.db.settings.logoData = "";
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        saveGeneralSettings() {
+            this.db.settings.generalDept = document.getElementById("setGenDept").value.trim();
+            this.db.settings.reportHeaderTitle = document.getElementById("setReportTitle")?.value.trim() || "مركز التقارير والإحصائيات التوثيقية";
+            this.saveDB();
+            alert("تم حفظ وتحديث بيانات المنشأة وعناوين التقارير بنجاح.");
+        },
+
+        saveWorkTimes() {
+            this.db.settings.workStartTime = document.getElementById("setWorkStart").value;
+            this.db.settings.workEndTime = document.getElementById("setWorkEnd").value;
+            this.saveDB();
+            alert("تم حفظ مواعيد الدوام الرسمي وسيعتمدها النظام تلقائياً في حساب الساعات.");
+        },
+
+        saveSupabaseConfig() {
+            this.db.settings.supabaseUrl = document.getElementById("setSupabaseUrl").value.trim();
+            this.db.settings.supabaseKey = document.getElementById("setSupabaseKey").value.trim();
+            this.saveDB();
+            this.initSupabase();
+            alert("تم حفظ إعدادات Supabase وتفعيل الاتصال.");
+        },
+
+        openAddDepartmentPrompt() {
+            const name = prompt("أدخل مسمى الإدارة الجديدة:");
+            if (name && name.trim()) {
+                this.db.departments.push({
+                    id: "dept_" + Date.now(),
+                    name: name.trim(),
+                    sections: []
+                });
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        renameDept(deptId) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const newName = prompt("أدخل المسمى الجديد للإدارة:", dept.name);
+            if (newName && newName.trim() && newName.trim() !== dept.name) {
+                dept.name = newName.trim();
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        safeDeleteDept(deptId) {
+            const count = this.db.users.filter(u => u.deptId === deptId).length;
+            if (count > 0) {
+                alert(`⚠️ تعذر الحذف!\n\nهناك (${count}) موظف مسجلون تحت هذه الإدارة حالياً.\nيمنع النظام حذف أي إدارة قبل نقل الموظفين منها إلى إدارة أخرى لحفظ سجلاتهم.`);
+                return;
+            }
+            if (confirm("هل أنت متأكد من حذف هذه الإدارة لعدم وجود موظفين مسجلين بها؟")) {
+                this.db.departments = this.db.departments.filter(d => d.id !== deptId);
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        addSectionToDept(deptId) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const sec = prompt(`أدخل اسم القسم التابع لـ (${dept.name}):`);
+            if (sec && sec.trim()) {
+                if (!dept.sections) dept.sections = [];
+                dept.sections.push(sec.trim());
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        renameSection(deptId, oldSec) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const newSec = prompt("أدخل اسم القسم الجديد:", oldSec);
+            if (newSec && newSec.trim() && newSec.trim() !== oldSec) {
+                const idx = dept.sections.indexOf(oldSec);
+                if (idx !== -1) dept.sections[idx] = newSec.trim();
+                this.db.users.forEach(u => {
+                    if (u.deptId === deptId && u.sectionName === oldSec) u.sectionName = newSec.trim();
+                });
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        safeDeleteSection(deptId, secName) {
+            const count = this.db.users.filter(u => u.deptId === deptId && u.sectionName === secName).length;
+            if (count > 0) {
+                alert(`⚠️ لا يمكن حذف القسم!\n\nيوجد (${count}) موظف مسجلون في هذا القسم.\nيرجى استخدام خيار (نقل موظفين بين الإدارات) لنقلهم أولاً.`);
+                return;
+            }
+            if (confirm(`هل أنت متأكد من حذف قسم (${secName})؟`)) {
+                const dept = this.db.departments.find(d => d.id === deptId);
+                if (dept && dept.sections) {
+                    dept.sections = dept.sections.filter(s => s !== secName);
+                    this.saveDB();
+                    this.setTab("settings");
+                }
+            }
+        },
+
+        exportBackupJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.db, null, 2));
+            const a = document.createElement('a');
+            a.setAttribute("href", dataStr);
+            a.setAttribute("download", `LEAVE_SYSTEM_BACKUP_${new Date().toISOString().split("T")[0]}.json`);
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        },
+
+        importBackupJSON(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const parsed = JSON.parse(evt.target.result);
+                    if (parsed.users && parsed.departments) {
+                        App.db = parsed;
+                        App.saveDB();
+                        alert("تمت استعادة النسخة الاحتياطية بنجاح!");
+                        location.reload();
+                    } else {
+                        alert("الملف غير صالح أو لا يحتوي على بنية بيانات النظام الصحيحة.");
+                    }
+                } catch(err) {
+                    alert("خطأ أثناء قراءة ملف النسخة الاحتياطية.");
+                }
+            };
+            reader.readAsText(file);
+        },
+
+        factoryResetSystem() {
+            if (confirm("⚠️ تحذير:\nسيتم حذف جميع الطلبات وتصفير النظام بالكامل!\nسيقوم النظام فوراً بتنزيل نسخة احتياطية قبل التصفير لحفظ بياناتك.\n\nهل تريد المتابعة؟")) {
+                this.exportBackupJSON();
+                localStorage.removeItem("LEAVE_SYS_DATA_V3");
+                localStorage.removeItem("LEAVE_SYS_DB_DATA");
+                localStorage.removeItem("LEAVE_SYS_DATA");
+                this.db = DB_DEFAULT;
+                this.saveDB();
+                alert("تم تهيئة النظام بالكامل وتنزيل نسخة احتياطية.");
+                location.reload();
+            }
+        },
+
+        // --- 6. استئذاناتي ---
         renderMyRequestsView(container) {
             const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
             container.innerHTML = `
@@ -1123,9 +1281,9 @@
                                     </tr>
                                 ` : myRequests.map(r => `
                                     <tr class="hover:bg-slate-50/70 transition">
-                                        <td class="p-3.5 font-bold text-emerald-800">${r.refNo}</td>
+                                        <td class="p-3.5 font-bold text-emerald-800 font-mono">${r.refNo}</td>
                                         <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
-                                        <td class="p-3.5">${r.leaveDate}</td>
+                                        <td class="p-3.5 font-mono">${r.leaveDate}</td>
                                         <td class="p-3.5 font-bold text-slate-800">${r.timingText} <span class="text-slate-400 text-[11px]">(${r.hours} س)</span></td>
                                         <td class="p-3.5">${this.getStatusBadge(r.status)}</td>
                                         <td class="p-3.5 text-slate-500 max-w-xs truncate">${r.rejectReason || r.reason}</td>
@@ -1188,11 +1346,11 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ تقديم الطلب</label>
-                            <input type="date" value="${today}" disabled class="w-full p-2.5 bg-slate-100 border rounded-xl text-xs font-bold text-slate-500">
+                            <input type="date" value="${today}" disabled class="w-full p-2.5 bg-slate-100 border rounded-xl text-xs font-bold text-slate-500 font-mono">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ الاستئذان</label>
-                            <input type="date" id="reqLeaveDate" value="${today}" required class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                            <input type="date" id="reqLeaveDate" value="${today}" required class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold font-mono">
                         </div>
                     </div>
 
@@ -1344,7 +1502,7 @@
             }
         },
 
-        // --- صندوق الاعتمادات ---
+        // --- 7. صندوق الاعتمادات ---
         renderApprovalsView(container) {
             const pendingReqs = this.db.requests.filter(r => r.status === 'pending');
             container.innerHTML = `
@@ -1377,14 +1535,14 @@
                                     </tr>
                                 ` : pendingReqs.map(r => `
                                     <tr class="hover:bg-slate-50/70 transition">
-                                        <td class="p-3.5 font-bold text-emerald-800">${r.refNo}</td>
+                                        <td class="p-3.5 font-bold text-emerald-800 font-mono">${r.refNo}</td>
                                         <td class="p-3.5">
                                             <div class="font-bold text-slate-800">${r.userName}</div>
-                                            <div class="text-[11px] text-slate-400">${r.jobTitle} (${r.empId})</div>
+                                            <div class="text-[11px] text-slate-400 font-mono">${r.jobTitle} (${r.empId})</div>
                                         </td>
                                         <td class="p-3.5">${r.sectionName ? `${r.sectionName} (${this.getDeptName(r.deptId)})` : this.getDeptName(r.deptId)}</td>
                                         <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
-                                        <td class="p-3.5 font-bold">${r.leaveDate} <div class="text-slate-400 text-[11px]">${r.timingText} (${r.hours} س)</div></td>
+                                        <td class="p-3.5 font-bold"><span class="font-mono">${r.leaveDate}</span> <div class="text-slate-400 text-[11px]">${r.timingText} (${r.hours} س)</div></td>
                                         <td class="p-3.5 text-slate-600 max-w-xs">${r.reason}</td>
                                         <td class="p-3.5 text-center space-x-1 space-x-reverse">
                                             <button onclick="App.openApproveDecisionModal('${r.id}', true)" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-sm">
@@ -1475,7 +1633,7 @@
             alert(status === 'approved' ? "تمت الموافقة على الطلب بنجاح." : "تم تسجيل رفض الطلب وتوثيق السبب للموظف.");
         },
 
-        // --- التفويض الإداري ---
+        // --- 8. التفويض الإداري ---
         renderDelegationsView(container) {
             container.innerHTML = `
                 <div class="flex justify-between items-center mb-6">
@@ -1590,7 +1748,7 @@
             }
         },
 
-        // --- إدارة الموظفين ---
+        // --- 9. إدارة الموظفين ---
         renderAdminUsersView(container) {
             container.innerHTML = `
                 <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
@@ -1782,7 +1940,7 @@
                 sectionName: document.getElementById("uSectionName").value.trim(),
                 password: document.getElementById("uPassword").value,
                 signatureData: document.getElementById("uSignatureData").value,
-                mustChangePass: !isEdit
+                mustChangePass: false
             };
 
             if (isEdit) {
@@ -1876,7 +2034,7 @@
             }
         },
 
-        // --- استعادة كلمات المرور ---
+        // --- 10. طلبات استعادة الكلمات ---
         renderAdminResetsView(container) {
             container.innerHTML = `
                 <div class="mb-6">
@@ -1969,71 +2127,11 @@
 
             const tempPass = "pass" + Math.floor(1000 + Math.random() * 9000);
             user.password = tempPass;
-            user.mustChangePass = true;
+            user.mustChangePass = false;
             req.status = "completed";
             this.saveDB();
             this.setTab("admin_resets");
             alert(`تم توليد كلمة مرور مؤقتة للموظف (${user.name}):\n\nكلمة المرور المؤقتة: ${tempPass}\n\nيُرجى تسليمها له ليقوم بتغييرها عند أول دخول.`);
-        },
-
-        exportReportsCSV() {
-            let rows = [["رقم الطلب", "الموظف", "الرقم الوظيفي", "الإدارة", "القسم", "النوع", "التاريخ", "الساعات", "الحالة", "المعتمد"]];
-            this.db.requests.forEach(r => {
-                rows.push([r.refNo, r.userName, r.empId, this.getDeptName(r.deptId), r.sectionName || 'إدارة مباشرة', r.type, r.leaveDate, r.hours, r.status, r.decisionBy || '']);
-            });
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.join(",")).join("\n");
-            let encodedUri = encodeURI(csvContent);
-            let link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `leave_report_${new Date().toISOString().split("T")[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        },
-
-        exportBackupJSON() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.db, null, 2));
-            const a = document.createElement('a');
-            a.setAttribute("href", dataStr);
-            a.setAttribute("download", `LEAVE_SYSTEM_BACKUP_${new Date().toISOString().split("T")[0]}.json`);
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        },
-
-        importBackupJSON(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                try {
-                    const parsed = JSON.parse(evt.target.result);
-                    if (parsed.users && parsed.departments) {
-                        App.db = parsed;
-                        App.saveDB();
-                        alert("تمت استعادة النسخة الاحتياطية بنجاح!");
-                        location.reload();
-                    } else {
-                        alert("الملف غير صالح أو لا يحتوي على بنية بيانات النظام الصحيحة.");
-                    }
-                } catch(err) {
-                    alert("خطأ أثناء قراءة ملف النسخة الاحتياطية.");
-                }
-            };
-            reader.readAsText(file);
-        },
-
-        factoryResetSystem() {
-            if (confirm("⚠️ تحذير:\nسيتم حذف جميع الطلبات وتصفير النظام بالكامل!\nسيقوم النظام فوراً بتنزيل نسخة احتياطية قبل التصفير لحفظ بياناتك.\n\nهل تريد المتابعة؟")) {
-                this.exportBackupJSON();
-                localStorage.removeItem("LEAVE_SYS_DATA_V3");
-                localStorage.removeItem("LEAVE_SYS_DB_DATA");
-                localStorage.removeItem("LEAVE_SYS_DATA");
-                this.db = DB_DEFAULT;
-                this.saveDB();
-                alert("تم تهيئة النظام بالكامل وتنزيل نسخة احتياطية.");
-                location.reload();
-            }
         },
 
         getDeptName(id) {
