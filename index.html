@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة وتوثيق الاستئذانات الإلكتروني</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Cairo -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white !important; margin: 0; padding: 0; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-emerald-900 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center gap-3">
+                <div id="orgLogoContainer" class="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center p-1.5 border border-white/20 overflow-hidden shadow-inner">
+                    <i class="fa-solid fa-stamp text-2xl text-emerald-300"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-lg md:text-xl tracking-tight leading-tight flex items-center gap-2">
+                        <span>نظام إدارة الاستئذانات الإلكتروني</span>
+                        <span id="cloudStatusBadge" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10">
+                            <i class="fa-solid fa-hard-drive ml-1"></i> محلي (Offline)
+                        </span>
+                    </h1>
+                    <p class="text-emerald-200/90 text-xs font-semibold" id="topOrgTitle">الإدارة العامة لتقنية المعلومات والتحول الرقمي</p>
+                </div>
+            </div>
+
+            <!-- User Header Controls -->
+            <div id="userHeaderPanel" class="hidden flex items-center gap-3">
+                <div class="bg-emerald-950/60 border border-emerald-700/50 rounded-xl px-3 py-1.5 flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow">
+                        <span id="userAvatarText">م</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-sm leading-tight" id="headerUserName">اسم المستخدم</div>
+                        <div class="text-[11px] text-emerald-300 font-medium" id="headerUserRole">المسمى الوظيفي</div>
+                    </div>
+                </div>
+                <button onclick="App.logout()" title="تسجيل الخروج" class="p-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white transition shadow flex items-center justify-center">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav id="navTabsContainer" class="hidden bg-emerald-800/80 border-t border-emerald-700/50 backdrop-blur px-4">
+            <div class="max-w-7xl mx-auto flex gap-1 overflow-x-auto py-1.5 scrollbar-thin scrollbar-thumb-emerald-600" id="tabsList">
+                <!-- Tabs injected dynamically based on role -->
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full" id="mainContainer">
+        <!-- Views rendered here -->
+    </main>
+
+    <!-- Global Modal Anchor -->
+    <div id="modalContainer" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+        <div id="modalContent" class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto transform transition-all p-6 text-right">
+            <!-- Dynamic Modal Content -->
+        </div>
+    </div>
+
+    <!-- Official Approval Letter Printable Section -->
+    <div id="printableResolutionContainer" class="hidden print-only">
+        <!-- Rendered when printing decision document -->
+    </div>
+
+    <script>
+    // System Data Architecture
+    const DB_SCHEMA = {
+        settings: {
+            orgName: "المملكة العربية السعودية",
+            generalDept: "الإدارة العامة لتقنية المعلومات والتحول الرقمي",
+            logoData: "",
+            workStartTime: "07:30",
+            workEndTime: "14:30",
+            supabaseUrl: "",
+            supabaseKey: ""
+        },
+        departments: [
+            { id: "dept_0", name: "الإدارة العامة (أقسام مباشرة)", sections: ["قسم الجودة التقنية"] },
+            { id: "dept_1", name: "إدارة الأنظمة والبرامج", sections: ["قسم تطور الأنظمة والبرامج", "قسم الاختبار وجودة الأنظمة والبرامج"] },
+            { id: "dept_2", name: "إدارة الدعم الفني", sections: ["قسم خدمات المستفيدين", "قسم الصيانة والتشغيل", "قسم التمويل الفني"] },
+            { id: "dept_3", name: "إدارة البنية التحتية", sections: ["قسم الشبكات", "قسم الحوسبة السحابية ومركز البيانات", "قسم المخاطر واستمرارية الأعمال", "قسم أمن وحماية البنية التحتية"] },
+            { id: "dept_4", name: "إدارة التحول الرقمي", sections: ["قسم تحليل الأعمال", "قسم تمكين التحول الرقمي", "قسم الإبتكار والذكاء الاصطناعي"] },
+            { id: "dept_5", name: "إدارة التخطيط التقني", sections: ["قسم التخطيط والدراسات", "قسم البنية المؤسسية", "مكتب إدارة المشاريع"] }
+        ],
+        users: [
+            {
+                id: "usr_admin",
+                name: "مدير النظام التقني",
+                username: "admin",
+                password: "Hh@537573",
+                role: "super_admin",
+                empId: "ADM-001",
+                jobTitle: "مشرف النظام التقني العام",
+                deptId: "dept_0",
+                sectionName: "قسم الجودة التقنية",
+                signatureData: "",
+                mustChangePass: false
+            }
+        ],
+        requests: [],
+        delegations: [],
+        resetRequests: []
+    };
+
+    const App = {
+        db: DB_SCHEMA,
+        currentUser: null,
+        activeTab: "my_requests",
+        supabaseClient: null,
+
+        init() {
+            this.loadLocalDB();
+            this.initSupabase();
+            this.checkSession();
+        },
+
+        loadLocalDB() {
+            const raw = localStorage.getItem("LEAVE_SYS_DATA");
+            if (raw) {
+                try {
+                    this.db = Object.assign({}, DB_SCHEMA, JSON.parse(raw));
+                } catch(e) {
+                    console.error("Local DB load error", e);
+                }
+            } else {
+                this.saveDB();
+            }
+        },
+
+        saveDB() {
+            localStorage.setItem("LEAVE_SYS_DATA", JSON.stringify(this.db));
+            this.updateHeaderOrgInfo();
+            if (this.supabaseClient) {
+                this.syncToSupabase();
+            }
+        },
+
+        initSupabase() {
+            const url = this.db.settings.supabaseUrl;
+            const key = this.db.settings.supabaseKey;
+            const badge = document.getElementById("cloudStatusBadge");
+            if (url && key && window.supabase) {
+                try {
+                    this.supabaseClient = window.supabase.createClient(url, key);
+                    if (badge) {
+                        badge.className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white border border-white/20";
+                        badge.innerHTML = `<i class="fa-solid fa-cloud-check ml-1"></i> سحابي متصل (Supabase)`;
+                    }
+                } catch (e) {
+                    console.error("Supabase Init failed:", e);
+                }
+            } else if (badge) {
+                badge.className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10";
+                badge.innerHTML = `<i class="fa-solid fa-hard-drive ml-1"></i> محلي (Offline)`;
+            }
+        },
+
+        async syncToSupabase() {
+            if (!this.supabaseClient) return;
+            try {
+                await this.supabaseClient.from("app_state").upsert({
+                    id: 1,
+                    payload: this.db,
+                    updated_at: new Date().toISOString()
+                });
+            } catch (err) {
+                console.warn("Supabase background sync:", err);
+            }
+        },
+
+        checkSession() {
+            const uid = sessionStorage.getItem("LEAVE_SYS_AUTH_USER");
+            if (uid) {
+                const user = this.db.users.find(u => u.id === uid);
+                if (user) {
+                    this.setCurrentUser(user);
+                    return;
+                }
+            }
+            this.renderLoginView();
+        },
+
+        setCurrentUser(user) {
+            this.currentUser = user;
+            sessionStorage.setItem("LEAVE_SYS_AUTH_USER", user.id);
+            this.updateHeaderOrgInfo();
+
+            if (user.mustChangePass) {
+                this.renderForceChangePassView();
+                return;
+            }
+
+            document.getElementById("userHeaderPanel").classList.remove("hidden");
+            document.getElementById("navTabsContainer").classList.remove("hidden");
+            document.getElementById("headerUserName").innerText = user.name;
+            document.getElementById("headerUserRole").innerText = `${user.jobTitle} - ${this.getRoleTitle(user.role)}`;
+            document.getElementById("userAvatarText").innerText = user.name.charAt(0);
+
+            this.renderTabs();
+            this.setTab(user.role === 'super_admin' ? 'admin_users' : 'my_requests');
+        },
+
+        logout() {
+            sessionStorage.removeItem("LEAVE_SYS_AUTH_USER");
+            this.currentUser = null;
+            document.getElementById("userHeaderPanel").classList.add("hidden");
+            document.getElementById("navTabsContainer").classList.add("hidden");
+            this.renderLoginView();
+        },
+
+        updateHeaderOrgInfo() {
+            const logoCont = document.getElementById("orgLogoContainer");
+            const topTitle = document.getElementById("topOrgTitle");
+            if (topTitle) topTitle.innerText = this.db.settings.generalDept || "الإدارة العامة لتقنية المعلومات والتحول الرقمي";
+            if (logoCont) {
+                if (this.db.settings.logoData) {
+                    logoCont.innerHTML = `<img src="${this.db.settings.logoData}" class="w-full h-full object-contain" alt="Logo">`;
+                } else {
+                    logoCont.innerHTML = `<i class="fa-solid fa-stamp text-2xl text-emerald-300"></i>`;
+                }
+            }
+        },
+
+        getRoleTitle(role) {
+            const map = {
+                super_admin: "مدير النظام (Super Admin)",
+                gen_manager: "المدير العام",
+                dept_manager: "مدير إدارة",
+                section_head: "رئيس قسم",
+                employee: "موظف"
+            };
+            return map[role] || "موظف";
+        },
+
+        renderTabs() {
+            const list = document.getElementById("tabsList");
+            const r = this.currentUser ? this.currentUser.role : "";
+            const isManager = ['super_admin', 'gen_manager', 'dept_manager', 'section_head'].includes(r);
+            const isSuper = r === 'super_admin';
+
+            let tabs = [
+                { id: 'my_requests', label: 'استئذاناتي', icon: 'fa-solid fa-user-clock' },
+                { id: 'reports', label: 'التقارير والإحصائيات', icon: 'fa-solid fa-chart-pie' }
+            ];
+
+            if (isManager) {
+                tabs.splice(1, 0, { id: 'approvals', label: 'صندوق الاعتمادات', icon: 'fa-solid fa-clipboard-check' });
+                tabs.splice(2, 0, { id: 'delegations', label: 'التفويض الإداري', icon: 'fa-solid fa-user-shield' });
+            }
+
+            if (isSuper) {
+                tabs.push({ id: 'admin_users', label: 'إدارة الموظفين والصلاحيات', icon: 'fa-solid fa-users-gear' });
+                tabs.push({ id: 'admin_resets', label: 'طلبات استعادة الكلمات', icon: 'fa-solid fa-key' });
+                tabs.push({ id: 'settings', label: 'إعدادات النظام والدوام', icon: 'fa-solid fa-gears' });
+            }
+
+            list.innerHTML = tabs.map(t => `
+                <button onclick="App.setTab('${t.id}')" id="tab_btn_${t.id}"
+                    class="px-4 py-2 rounded-lg font-bold text-xs whitespace-nowrap flex items-center gap-2 transition duration-150 ${this.activeTab === t.id ? 'bg-emerald-950 text-white shadow' : 'text-emerald-100 hover:bg-emerald-700/60'}">
+                    <i class="${t.icon}"></i>
+                    <span>${t.label}</span>
+                </button>
+            `).join("");
+        },
+
+        setTab(tabId) {
+            this.activeTab = tabId;
+            this.renderTabs();
+            const container = document.getElementById("mainContainer");
+            container.innerHTML = "";
+
+            switch (tabId) {
+                case 'my_requests': this.renderMyRequestsView(container); break;
+                case 'approvals': this.renderApprovalsView(container); break;
+                case 'delegations': this.renderDelegationsView(container); break;
+                case 'reports': this.renderReportsView(container); break;
+                case 'admin_users': this.renderAdminUsersView(container); break;
+                case 'admin_resets': this.renderAdminResetsView(container); break;
+                case 'settings': this.renderSettingsView(container); break;
+                default: this.renderMyRequestsView(container);
+            }
+        },
+
+        // 1. Login View
+        renderLoginView() {
+            const container = document.getElementById("mainContainer");
+            container.innerHTML = `
+                <div class="max-w-md mx-auto my-12 bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden text-right p-8">
+                    <div class="text-center mb-6">
+                        <div class="w-20 h-20 bg-emerald-50 rounded-2xl mx-auto flex items-center justify-center p-2 mb-3 border border-emerald-100 shadow-sm">
+                            ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<i class="fa-solid fa-building-columns text-3xl text-emerald-700"></i>`}
+                        </div>
+                        <h2 class="text-xl font-black text-slate-800">${this.db.settings.generalDept}</h2>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">تسجيل الدخول لبوابة استئذان الموظفين</p>
+                    </div>
+
+                    <form onsubmit="App.handleLogin(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">اسم المستخدم</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-user absolute right-3.5 top-3.5 text-slate-400 text-sm"></i>
+                                <input type="text" id="loginUsername" required placeholder="admin أو اسم المستخدم"
+                                    class="w-full pr-10 pl-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">كلمة المرور</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-lock absolute right-3.5 top-3.5 text-slate-400 text-sm"></i>
+                                <input type="password" id="loginPassword" required placeholder="••••••••"
+                                    class="w-full pr-10 pl-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <button type="button" onclick="App.togglePasswordVisibility('loginPassword', this)"
+                                    class="absolute left-3 top-3 text-slate-400 hover:text-slate-600">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center text-xs">
+                            <button type="button" onclick="App.openResetRequestModal()" class="text-emerald-700 font-bold hover:underline">
+                                نسيت كلمة المرور؟
+                            </button>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-700/20 transition duration-150">
+                            <i class="fa-solid fa-arrow-right-to-bracket ml-2"></i> دخول النظام
+                        </button>
+                    </form>
+                </div>
+            `;
+        },
+
+        handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById("loginUsername").value.trim();
+            const p = document.getElementById("loginPassword").value;
+
+            const user = this.db.users.find(x => x.username.toLowerCase() === u.toLowerCase() && x.password === p);
+            if (!user) {
+                alert("خطأ: اسم المستخدم أو كلمة المرور غير صحيحة!");
+                return;
+            }
+            this.setCurrentUser(user);
+        },
+
+        togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const isPass = input.type === 'password';
+            input.type = isPass ? 'text' : 'password';
+            btn.innerHTML = isPass ? `<i class="fa-solid fa-eye-slash"></i>` : `<i class="fa-solid fa-eye"></i>`;
+        },
+
+        // Force change temporary password view
+        renderForceChangePassView() {
+            const container = document.getElementById("mainContainer");
+            container.innerHTML = `
+                <div class="max-w-md mx-auto my-12 bg-white rounded-3xl shadow-xl p-8 border border-amber-200 text-right">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-3">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <h2 class="text-lg font-black text-slate-800">تغيير كلمة المرور المؤقتة</h2>
+                        <p class="text-xs text-slate-500 mt-1 font-semibold">لأمان حسابك، يجب تعيين كلمة مرور جديدة قبل المتابعة</p>
+                    </div>
+
+                    <form onsubmit="App.handleForcePasswordChange(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">كلمة المرور الجديدة</label>
+                            <div class="relative">
+                                <input type="password" id="newPassInput" required minlength="6" placeholder="••••••••"
+                                    class="w-full pr-4 pl-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500">
+                                <button type="button" onclick="App.togglePasswordVisibility('newPassInput', this)" class="absolute left-3 top-3 text-slate-400">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">تأكيد كلمة المرور</label>
+                            <div class="relative">
+                                <input type="password" id="confirmPassInput" required minlength="6" placeholder="••••••••"
+                                    class="w-full pr-4 pl-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500">
+                                <button type="button" onclick="App.togglePasswordVisibility('confirmPassInput', this)" class="absolute left-3 top-3 text-slate-400">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-sm shadow">
+                            تحديث ودخول النظام
+                        </button>
+                    </form>
+                </div>
+            `;
+        },
+
+        handleForcePasswordChange(e) {
+            e.preventDefault();
+            const p1 = document.getElementById("newPassInput").value;
+            const p2 = document.getElementById("confirmPassInput").value;
+            if (p1 !== p2) {
+                alert("كلمتا المرور غير متطابقتين!");
+                return;
+            }
+            this.currentUser.password = p1;
+            this.currentUser.mustChangePass = false;
+            const idx = this.db.users.findIndex(u => u.id === this.currentUser.id);
+            if (idx !== -1) this.db.users[idx] = this.currentUser;
+            this.saveDB();
+            alert("تم تعيين كلمة المرور بنجاح!");
+            this.setCurrentUser(this.currentUser);
+        },
+
+        // 2. My Requests View
+        renderMyRequestsView(container) {
+            const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
+            const today = new Date().toISOString().split("T")[0];
+
+            container.innerHTML = `
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">طلبات الاستئذان الخاصة بي</h2>
+                        <p class="text-xs text-slate-500 font-semibold">رفع ومتابعة طلبات الاستئذان الشخصية وطباعة القرارات</p>
+                    </div>
+                    <button onclick="App.openNewRequestModal()" class="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-sm shadow-md flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> طلب استئذان جديد
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right text-xs">
+                            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-3.5">رقم الطلب</th>
+                                    <th class="p-3.5">نوع الاستئذان</th>
+                                    <th class="p-3.5">تاريخ الاستئذان</th>
+                                    <th class="p-3.5">التوقيت والمدة</th>
+                                    <th class="p-3.5">الحالة</th>
+                                    <th class="p-3.5">ملاحظات / سبب الرفض</th>
+                                    <th class="p-3.5 text-center">الإجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                                ${myRequests.length === 0 ? `
+                                    <tr>
+                                        <td colspan="7" class="p-8 text-center text-slate-400">
+                                            <i class="fa-regular fa-folder-open text-3xl mb-2 block"></i>
+                                            لا توجد طلبات استئذان سابقة مسجلة لك.
+                                        </td>
+                                    </tr>
+                                ` : myRequests.map(r => `
+                                    <tr class="hover:bg-slate-50/70 transition">
+                                        <td class="p-3.5 font-bold text-emerald-800">${r.refNo}</td>
+                                        <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
+                                        <td class="p-3.5">${r.leaveDate}</td>
+                                        <td class="p-3.5 font-bold text-slate-800">${r.timingText} <span class="text-slate-400 text-[11px]">(${r.hours} س)</span></td>
+                                        <td class="p-3.5">${this.getStatusBadge(r.status)}</td>
+                                        <td class="p-3.5 text-slate-500 max-w-xs truncate">${r.rejectReason || r.reason}</td>
+                                        <td class="p-3.5 text-center space-x-1 space-x-reverse">
+                                            ${r.status === 'pending' ? `
+                                                <button onclick="App.openEditRequestModal('${r.id}')" title="تعديل الطلب" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+                                                    <i class="fa-solid fa-pen-to-square"></i>
+                                                </button>
+                                                <button onclick="App.deleteRequest('${r.id}')" title="إلغاء الطلب" class="p-1.5 text-red-600 hover:bg-red-50 rounded-lg">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            ` : `
+                                                <span class="text-slate-400 text-[10px] bg-slate-100 px-2 py-1 rounded" title="مغلق بعد صدور القرار الإداري">
+                                                    <i class="fa-solid fa-lock ml-1"></i> مقفل
+                                                </span>
+                                            `}
+                                            ${r.status === 'approved' ? `
+                                                <button onclick="App.printResolution('${r.id}')" title="طباعة قرار الموافقة" class="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg font-bold">
+                                                    <i class="fa-solid fa-print"></i> القرار
+                                                </button>
+                                            ` : ''}
+                                        </td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        },
+
+        getTypeBadge(t) {
+            switch(t) {
+                case 'late_in': return `<span class="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">دخول متأخر</span>`;
+                case 'early_out': return `<span class="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full border border-purple-200">خروج مبكر</span>`;
+                case 'hours': return `<span class="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200">استئذان بساعات</span>`;
+                default: return t;
+            }
+        },
+
+        getStatusBadge(s) {
+            switch(s) {
+                case 'pending': return `<span class="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-bold">قيد الانتظار</span>`;
+                case 'approved': return `<span class="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">معتمد ومقبول</span>`;
+                case 'rejected': return `<span class="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full font-bold">مرفوض</span>`;
+                default: return s;
+            }
+        },
+
+        // Open Request Modal (Add / Edit)
+        openNewRequestModal() {
+            const today = new Date().toISOString().split("T")[0];
+            const mc = document.getElementById("modalContent");
+            mc.innerHTML = `
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <h3 class="font-black text-base text-slate-800">طلب استئذان جديد</h3>
+                    <button onclick="App.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <form onsubmit="App.handleSaveRequest(event)" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ تقديم الطلب</label>
+                            <input type="date" value="${today}" disabled class="w-full p-2.5 bg-slate-100 border rounded-xl text-xs font-bold text-slate-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ الاستئذان</label>
+                            <input type="date" id="reqLeaveDate" value="${today}" required class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">نوع الاستئذان</label>
+                        <select id="reqType" onchange="App.handleRequestTypeChange()" class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-emerald-500">
+                            <option value="late_in">دخول متأخر (حضور بعد بداية الدوام)</option>
+                            <option value="early_out">خروج مبكر (انصراف قبل نهاية الدوام)</option>
+                            <option value="hours">استئذان محدد بساعات (خروج وعودة أثناء الدوام)</option>
+                        </select>
+                    </div>
+
+                    <!-- Dynamic Timing Fields -->
+                    <div id="dynamicTimingContainer" class="p-3 bg-slate-50 border rounded-xl"></div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">سبب الاستئذان (إجباري)</label>
+                        <textarea id="reqReason" required rows="2" placeholder="اذكر سبب الاستئذان..." class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-emerald-500"></textarea>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2 border-t">
+                        <button type="button" onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs">إلغاء</button>
+                        <button type="submit" class="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow">إرسال الطلب للاعتماد</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById("modalContainer").classList.remove("hidden");
+            this.handleRequestTypeChange();
+        },
+
+        handleRequestTypeChange() {
+            const type = document.getElementById("reqType").value;
+            const container = document.getElementById("dynamicTimingContainer");
+            const startD = this.db.settings.workStartTime || "07:30";
+            const endD = this.db.settings.workEndTime || "14:30";
+
+            if (type === 'late_in') {
+                container.innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-slate-500 font-bold">
+                            <span>بداية الدوام الرسمي: ${startD}</span>
+                        </div>
+                        <label class="block text-xs font-bold text-slate-700">وقت الحضور المتوقع</label>
+                        <input type="time" id="reqTimeIn" required value="09:00" class="w-full p-2 bg-white border rounded-lg text-xs font-bold">
+                        <p class="text-[11px] text-blue-600 font-semibold">* سيتم احتساب ساعات التأخير آلياً من بداية الدوام الرسمي.</p>
+                    </div>
+                `;
+            } else if (type === 'early_out') {
+                container.innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-slate-500 font-bold">
+                            <span>نهاية الدوام الرسمي: ${endD}</span>
+                        </div>
+                        <label class="block text-xs font-bold text-slate-700">وقت الخروج</label>
+                        <input type="time" id="reqTimeOut" required value="12:30" class="w-full p-2 bg-white border rounded-lg text-xs font-bold">
+                        <p class="text-[11px] text-purple-600 font-semibold">* سيتم احتساب ساعات الخروج المبكر حتى نهاية الدوام الرسمي آلياً.</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">وقت بداية الخروج</label>
+                            <input type="time" id="reqTimeStart" required value="10:00" class="w-full p-2 bg-white border rounded-lg text-xs font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">وقت العودة المتوقع</label>
+                            <input type="time" id="reqTimeReturn" required value="12:00" class="w-full p-2 bg-white border rounded-lg text-xs font-bold">
+                        </div>
+                    </div>
+                `;
+            }
+        },
+
+        handleSaveRequest(e) {
+            e.preventDefault();
+            const type = document.getElementById("reqType").value;
+            const leaveDate = document.getElementById("reqLeaveDate").value;
+            const reason = document.getElementById("reqReason").value.trim();
+            const startD = this.db.settings.workStartTime || "07:30";
+            const endD = this.db.settings.workEndTime || "14:30";
+
+            let timingText = "";
+            let hours = 0;
+
+            if (type === 'late_in') {
+                const timeIn = document.getElementById("reqTimeIn").value;
+                timingText = `حضور الساعة ${timeIn}`;
+                hours = this.calcHoursDiff(startD, timeIn);
+            } else if (type === 'early_out') {
+                const timeOut = document.getElementById("reqTimeOut").value;
+                timingText = `خروج الساعة ${timeOut}`;
+                hours = this.calcHoursDiff(timeOut, endD);
+            } else {
+                const t1 = document.getElementById("reqTimeStart").value;
+                const t2 = document.getElementById("reqTimeReturn").value;
+                timingText = `من ${t1} إلى ${t2}`;
+                hours = this.calcHoursDiff(t1, t2);
+            }
+
+            if (hours <= 0) hours = 1;
+
+            const newReq = {
+                id: "req_" + Date.now(),
+                refNo: "REQ-" + new Date().getFullYear() + "-" + String(this.db.requests.length + 1).padStart(3, '0'),
+                userId: this.currentUser.id,
+                userName: this.currentUser.name,
+                empId: this.currentUser.empId,
+                jobTitle: this.currentUser.jobTitle,
+                deptId: this.currentUser.deptId,
+                sectionName: this.currentUser.sectionName,
+                applyDate: new Date().toISOString().split("T")[0],
+                leaveDate: leaveDate,
+                type: type,
+                timingText: timingText,
+                hours: hours,
+                reason: reason,
+                status: "pending",
+                decisionBy: "",
+                decisionDate: "",
+                rejectReason: ""
+            };
+
+            this.db.requests.unshift(newReq);
+            this.saveDB();
+            this.closeModal();
+            this.setTab("my_requests");
+            alert("تم رفع طلب الاستئذان بنجاح وهو الآن بانتظار اعتماد المدير المباشر.");
+        },
+
+        calcHoursDiff(start, end) {
+            const [h1, m1] = start.split(":").map(Number);
+            const [h2, m2] = end.split(":").map(Number);
+            let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+            if (diff < 0) diff = 0;
+            return parseFloat((diff / 60).toFixed(1));
+        },
+
+        deleteRequest(id) {
+            const r = this.db.requests.find(x => x.id === id);
+            if (!r) return;
+            if (r.status !== 'pending' && this.currentUser.role !== 'super_admin') {
+                alert("لا يمكن حذف الطلب بعد اتخاذ القرار الإداري بشأنه!");
+                return;
+            }
+            if (confirm("هل أنت متأكد من إلغاء وحذف طلب الاستئذان هذا؟")) {
+                this.db.requests = this.db.requests.filter(x => x.id !== id);
+                this.saveDB();
+                this.setTab("my_requests");
+            }
+        },
+
+        // 3. Approvals Box (Manager / Delegated view)
+        renderApprovalsView(container) {
+            const pendingReqs = this.db.requests.filter(r => r.status === 'pending');
+            container.innerHTML = `
+                <div class="mb-6">
+                    <h2 class="text-xl font-black text-slate-800">صندوق اعتمادات الاستئذان</h2>
+                    <p class="text-xs text-slate-500 font-semibold">مراجعة طلبات موظفي الإدارة والأقسام التابعة واتخاذ القرار</p>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right text-xs">
+                            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-3.5">رقم الطلب</th>
+                                    <th class="p-3.5">الموظف</th>
+                                    <th class="p-3.5">القسم / الإدارة</th>
+                                    <th class="p-3.5">النوع</th>
+                                    <th class="p-3.5">تاريخ الاستئذان والتوقيت</th>
+                                    <th class="p-3.5">سبب الاستئذان</th>
+                                    <th class="p-3.5 text-center">القرار الإداري</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                                ${pendingReqs.length === 0 ? `
+                                    <tr>
+                                        <td colspan="7" class="p-8 text-center text-slate-400">
+                                            <i class="fa-solid fa-circle-check text-3xl mb-2 text-emerald-500 block"></i>
+                                            رائع! لا توجد طلبات معلقة بانتظار الاعتماد حالياً.
+                                        </td>
+                                    </tr>
+                                ` : pendingReqs.map(r => `
+                                    <tr class="hover:bg-slate-50/70 transition">
+                                        <td class="p-3.5 font-bold text-emerald-800">${r.refNo}</td>
+                                        <td class="p-3.5">
+                                            <div class="font-bold text-slate-800">${r.userName}</div>
+                                            <div class="text-[11px] text-slate-400">${r.jobTitle} (${r.empId})</div>
+                                        </td>
+                                        <td class="p-3.5">${r.sectionName || this.getDeptName(r.deptId)}</td>
+                                        <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
+                                        <td class="p-3.5 font-bold">${r.leaveDate} <div class="text-slate-400 text-[11px]">${r.timingText} (${r.hours} س)</div></td>
+                                        <td class="p-3.5 text-slate-600 max-w-xs">${r.reason}</td>
+                                        <td class="p-3.5 text-center space-x-1 space-x-reverse">
+                                            <button onclick="App.openApproveDecisionModal('${r.id}', true)" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-sm">
+                                                <i class="fa-solid fa-check ml-1"></i> موافقة
+                                            </button>
+                                            <button onclick="App.openApproveDecisionModal('${r.id}', false)" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs shadow-sm">
+                                                <i class="fa-solid fa-xmark ml-1"></i> رفض
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        },
+
+        openApproveDecisionModal(reqId, isApprove) {
+            const req = this.db.requests.find(x => x.id === reqId);
+            if (!req) return;
+            const mc = document.getElementById("modalContent");
+
+            if (isApprove) {
+                mc.innerHTML = `
+                    <div class="text-right space-y-4">
+                        <div class="flex justify-between items-center pb-2 border-b">
+                            <h3 class="font-black text-emerald-800">اعتماد وموافقة على طلب الاستئذان</h3>
+                            <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <p class="text-xs text-slate-600">هل تؤكد اعتماد طلب الموظف <strong>${req.userName}</strong> بتاريخ <strong>${req.leaveDate}</strong>؟</p>
+                        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-900">
+                            سيتم توقيع القرار إلكترونياً باسم <strong>${this.currentUser.name}</strong> (${this.getRoleTitle(this.currentUser.role)}) وإصدار القرار الرسمي فوراً.
+                        </div>
+                        <div class="flex justify-end gap-2 pt-3">
+                            <button onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-lg text-xs font-bold">إلغاء</button>
+                            <button onclick="App.confirmDecision('${req.id}', 'approved')" class="px-5 py-2 bg-emerald-700 text-white rounded-lg text-xs font-bold shadow">
+                                <i class="fa-solid fa-check ml-1"></i> تأكيد الموافقة
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                mc.innerHTML = `
+                    <div class="text-right space-y-4">
+                        <div class="flex justify-between items-center pb-2 border-b">
+                            <h3 class="font-black text-red-600">رفض طلب الاستئذان</h3>
+                            <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <p class="text-xs text-slate-600">رفض طلب الموظف: <strong>${req.userName}</strong></p>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">سبب الرفض (إجباري ليظهر للموظف)</label>
+                            <textarea id="rejectReasonInput" required rows="3" placeholder="اكتب سبب عدم الموافقة هنا..." class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-red-500"></textarea>
+                        </div>
+                        <div class="flex justify-end gap-2 pt-3">
+                            <button onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-lg text-xs font-bold">إلغاء</button>
+                            <button onclick="App.confirmDecision('${req.id}', 'rejected')" class="px-5 py-2 bg-red-600 text-white rounded-lg text-xs font-bold shadow">
+                                <i class="fa-solid fa-xmark ml-1"></i> تأكيد الرفض
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            document.getElementById("modalContainer").classList.remove("hidden");
+        },
+
+        confirmDecision(reqId, status) {
+            const req = this.db.requests.find(x => x.id === reqId);
+            if (!req) return;
+
+            if (status === 'rejected') {
+                const reason = document.getElementById("rejectReasonInput").value.trim();
+                if (!reason) {
+                    alert("يجب كتابة سبب الرفض!");
+                    return;
+                }
+                req.rejectReason = reason;
+            }
+
+            req.status = status;
+            req.decisionBy = `${this.currentUser.name} (${this.getRoleTitle(this.currentUser.role)})`;
+            req.decisionDate = new Date().toISOString().split("T")[0];
+            req.decisionSign = this.currentUser.signatureData || "";
+
+            this.saveDB();
+            this.closeModal();
+            this.setTab("approvals");
+            alert(status === 'approved' ? "تمت الموافقة على الطلب بنجاح." : "تم تسجيل رفض الطلب مع إشعار الموظف بالأسباب.");
+        },
+
+        // 4. Delegations View
+        renderDelegationsView(container) {
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">التفويض الإداري للصلاحيات</h2>
+                        <p class="text-xs text-slate-500 font-semibold">تفويض زميل أو مدير آخر للقيام بالاعتمادات أثناء الإجازات</p>
+                    </div>
+                    <button onclick="App.openNewDelegationModal()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> إضافة تفويض جديد
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-slate-50 text-slate-600 font-bold border-b">
+                            <tr>
+                                <th class="p-3.5">المدير المفوّض</th>
+                                <th class="p-3.5">المفوّض إليه (البديل)</th>
+                                <th class="p-3.5">الفترة من</th>
+                                <th class="p-3.5">إلى تاريخ</th>
+                                <th class="p-3.5">سبب التفويض</th>
+                                <th class="p-3.5 text-center">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                            ${this.db.delegations.length === 0 ? `
+                                <tr><td colspan="6" class="p-6 text-center text-slate-400">لا توجد تفويضات مسجلة حالياً</td></tr>
+                            ` : this.db.delegations.map(d => `
+                                <tr>
+                                    <td class="p-3.5 font-bold">${d.fromUserName}</td>
+                                    <td class="p-3.5 font-bold text-emerald-800">${d.toUserName}</td>
+                                    <td class="p-3.5">${d.startDate}</td>
+                                    <td class="p-3.5">${d.endDate}</td>
+                                    <td class="p-3.5 text-slate-500">${d.reason}</td>
+                                    <td class="p-3.5 text-center">
+                                        <button onclick="App.deleteDelegation('${d.id}')" class="text-red-600 hover:bg-red-50 p-1.5 rounded">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        },
+
+        openNewDelegationModal() {
+            const users = this.db.users.filter(u => u.id !== this.currentUser.id);
+            const today = new Date().toISOString().split("T")[0];
+            const mc = document.getElementById("modalContent");
+            mc.innerHTML = `
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <h3 class="font-black text-sm">تسجيل تفويض إداري جديد</h3>
+                    <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form onsubmit="App.handleSaveDelegation(event)" class="space-y-4 text-right">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">الموظف / المدير المفوّض له</label>
+                        <select id="delUserTo" required class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                            ${users.map(u => `<option value="${u.id}">${u.name} - ${u.jobTitle} (${this.getDeptName(u.deptId)})</option>`).join("")}
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">من تاريخ</label>
+                            <input type="date" id="delStart" required value="${today}" class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">إلى تاريخ</label>
+                            <input type="date" id="delEnd" required value="${today}" class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">السبب (مثلاً: قضاء إجازة اعتيادية)</label>
+                        <input type="text" id="delReason" required placeholder="قضاء إجازة..." class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2 border-t">
+                        <button type="button" onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold">إلغاء</button>
+                        <button type="submit" class="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow">حفظ التفويض</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById("modalContainer").classList.remove("hidden");
+        },
+
+        handleSaveDelegation(e) {
+            e.preventDefault();
+            const toId = document.getElementById("delUserTo").value;
+            const toUser = this.db.users.find(u => u.id === toId);
+            const del = {
+                id: "del_" + Date.now(),
+                fromUserId: this.currentUser.id,
+                fromUserName: this.currentUser.name,
+                toUserId: toId,
+                toUserName: toUser ? toUser.name : "",
+                startDate: document.getElementById("delStart").value,
+                endDate: document.getElementById("delEnd").value,
+                reason: document.getElementById("delReason").value
+            };
+            this.db.delegations.unshift(del);
+            this.saveDB();
+            this.closeModal();
+            this.setTab("delegations");
+        },
+
+        deleteDelegation(id) {
+            if (confirm("هل تريد إلغاء هذا التفويض؟")) {
+                this.db.delegations = this.db.delegations.filter(d => d.id !== id);
+                this.saveDB();
+                this.setTab("delegations");
+            }
+        },
+
+        // 5. Admin Users & Permissions View
+        renderAdminUsersView(container) {
+            container.innerHTML = `
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">إدارة منسوبي المنظومة والصلاحيات</h2>
+                        <p class="text-xs text-slate-500 font-semibold">إضافة وتعديل بيانات الموظفين والتواقيع وكلمات المرور</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="App.openTransferEmployeesModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2">
+                            <i class="fa-solid fa-people-arrows"></i> نقل موظفين بين الإدارات
+                        </button>
+                        <button onclick="App.openUserModal()" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2">
+                            <i class="fa-solid fa-user-plus"></i> إضافة موظف جديد
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right text-xs">
+                            <thead class="bg-slate-50 text-slate-600 font-bold border-b">
+                                <tr>
+                                    <th class="p-3.5">الموظف والاسم</th>
+                                    <th class="p-3.5">اسم الدخول والرقم</th>
+                                    <th class="p-3.5">الصلاحية</th>
+                                    <th class="p-3.5">الإدارة والقسم</th>
+                                    <th class="p-3.5">التوقيع الإلكتروني</th>
+                                    <th class="p-3.5 text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                                ${this.db.users.map(u => `
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="p-3.5 font-bold text-slate-800">${u.name}</td>
+                                        <td class="p-3.5 font-mono text-emerald-800">${u.username} <span class="text-slate-400 font-sans">(${u.empId})</span></td>
+                                        <td class="p-3.5">${this.getRoleTitle(u.role)}</td>
+                                        <td class="p-3.5">
+                                            <div>${this.getDeptName(u.deptId)}</div>
+                                            <div class="text-[11px] text-slate-400">${u.sectionName || '-'}</div>
+                                        </td>
+                                        <td class="p-3.5">
+                                            ${u.signatureData ? `<img src="${u.signatureData}" class="h-7 max-w-[90px] object-contain border p-0.5 rounded bg-white">` : `<span class="text-slate-300">غير مدرج</span>`}
+                                        </td>
+                                        <td class="p-3.5 text-center space-x-1 space-x-reverse">
+                                            <button onclick="App.openUserModal('${u.id}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="تعديل">
+                                                <i class="fa-solid fa-pen-to-square"></i>
+                                            </button>
+                                            ${u.id !== 'usr_admin' ? `
+                                                <button onclick="App.deleteUser('${u.id}')" class="p-1.5 text-red-600 hover:bg-red-50 rounded" title="حذف">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            ` : ''}
+                                        </td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        },
+
+        openUserModal(userId = null) {
+            const user = userId ? this.db.users.find(u => u.id === userId) : null;
+            const mc = document.getElementById("modalContent");
+            const tempPass = "temp" + Math.floor(1000 + Math.random() * 9000);
+
+            mc.innerHTML = `
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <h3 class="font-black text-sm">${user ? 'تعديل بيانات موظف' : 'إضافة موظف جديد للمنظومة'}</h3>
+                    <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <form onsubmit="App.handleSaveUser(event, '${userId || ''}')" class="space-y-3.5 text-right">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">الاسم الكامل *</label>
+                        <input type="text" id="uName" required value="${user ? user.name : ''}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">الرقم الوظيفي *</label>
+                            <input type="text" id="uEmpId" required value="${user ? user.empId : 'EMP-' + Math.floor(100 + Math.random()*900)}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">اسم المستخدم *</label>
+                            <input type="text" id="uUsername" required value="${user ? user.username : ''}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">الصلاحية في النظام *</label>
+                            <select id="uRole" required class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                                <option value="employee" ${user && user.role === 'employee' ? 'selected' : ''}>موظف</option>
+                                <option value="section_head" ${user && user.role === 'section_head' ? 'selected' : ''}>رئيس قسم</option>
+                                <option value="dept_manager" ${user && user.role === 'dept_manager' ? 'selected' : ''}>مدير إدارة</option>
+                                <option value="gen_manager" ${user && user.role === 'gen_manager' ? 'selected' : ''}>المدير العام</option>
+                                <option value="super_admin" ${user && user.role === 'super_admin' ? 'selected' : ''}>مدير النظام (Super Admin)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">المسمى الوظيفي *</label>
+                            <input type="text" id="uJobTitle" required value="${user ? user.jobTitle : 'أخصائي تقني'}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">الإدارة التابع لها *</label>
+                            <select id="uDeptId" onchange="App.handleUserModalDeptChange()" required class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                                ${this.db.departments.map(d => `<option value="${d.id}" ${user && user.deptId === d.id ? 'selected' : ''}>${d.name}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم</label>
+                            <select id="uSectionName" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold"></select>
+                        </div>
+                    </div>
+
+                    <!-- Password Field with Eye Icon -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">كلمة المرور ${user ? '(اتركها كما هي إن لم ترد تغييرها)' : 'المؤقتة'}</label>
+                        <div class="relative">
+                            <input type="password" id="uPassword" required value="${user ? user.password : tempPass}" class="w-full p-2 pl-10 bg-slate-50 border rounded-xl text-xs font-bold font-mono">
+                            <button type="button" onclick="App.togglePasswordVisibility('uPassword', this)" class="absolute left-3 top-2.5 text-slate-400">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Signature Attachment -->
+                    <div class="p-3 bg-slate-50 border rounded-xl">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">صورة التوقيع الإلكتروني (PNG / JPG)</label>
+                        <input type="file" id="uSignFile" accept="image/*" onchange="App.handleSignatureUpload(event)" class="text-xs w-full">
+                        <input type="hidden" id="uSignatureData" value="${user ? (user.signatureData || '') : ''}">
+                        <div id="uSignPreview" class="mt-2 ${user && user.signatureData ? '' : 'hidden'}">
+                            <img src="${user ? user.signatureData : ''}" class="h-10 border bg-white p-1 rounded">
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-3 border-t">
+                        <button type="button" onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold">إلغاء</button>
+                        <button type="submit" class="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow">حفظ البيانات</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById("modalContainer").classList.remove("hidden");
+            this.handleUserModalDeptChange(user ? user.sectionName : null);
+        },
+
+        handleUserModalDeptChange(selectedSection = null) {
+            const deptId = document.getElementById("uDeptId").value;
+            const secSelect = document.getElementById("uSectionName");
+            const dept = this.db.departments.find(d => d.id === deptId);
+
+            if (dept && dept.sections && dept.sections.length > 0) {
+                secSelect.innerHTML = dept.sections.map(s => `
+                    <option value="${s}" ${selectedSection === s ? 'selected' : ''}>${s}</option>
+                `).join("");
+            } else {
+                secSelect.innerHTML = `<option value="">لا توجد أقسام</option>`;
+            }
+        },
+
+        handleSignatureUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById("uSignatureData").value = evt.target.result;
+                const prev = document.getElementById("uSignPreview");
+                prev.innerHTML = `<img src="${evt.target.result}" class="h-10 border bg-white p-1 rounded">`;
+                prev.classList.remove("hidden");
+            };
+            reader.readAsDataURL(file);
+        },
+
+        handleSaveUser(e, userId) {
+            e.preventDefault();
+            const isEdit = Boolean(userId);
+            const userObj = {
+                id: isEdit ? userId : ("usr_" + Date.now()),
+                name: document.getElementById("uName").value.trim(),
+                empId: document.getElementById("uEmpId").value.trim(),
+                username: document.getElementById("uUsername").value.trim(),
+                role: document.getElementById("uRole").value,
+                jobTitle: document.getElementById("uJobTitle").value.trim(),
+                deptId: document.getElementById("uDeptId").value,
+                sectionName: document.getElementById("uSectionName").value,
+                password: document.getElementById("uPassword").value,
+                signatureData: document.getElementById("uSignatureData").value,
+                mustChangePass: !isEdit
+            };
+
+            if (isEdit) {
+                const idx = this.db.users.findIndex(u => u.id === userId);
+                if (idx !== -1) this.db.users[idx] = Object.assign({}, this.db.users[idx], userObj);
+            } else {
+                this.db.users.push(userObj);
+            }
+
+            this.saveDB();
+            this.closeModal();
+            this.setTab("admin_users");
+            alert("تم حفظ بيانات الموظف بنجاح.");
+        },
+
+        deleteUser(userId) {
+            if (userId === 'usr_admin') {
+                alert("لا يمكن حذف حساب مدير النظام الرئيسي!");
+                return;
+            }
+            if (confirm("هل أنت متأكد من حذف هذا الموظف نهائياً؟")) {
+                this.db.users = this.db.users.filter(u => u.id !== userId);
+                this.saveDB();
+                this.setTab("admin_users");
+            }
+        },
+
+        // 6. Transfer Employees Between Departments Modal
+        openTransferEmployeesModal() {
+            const mc = document.getElementById("modalContent");
+            mc.innerHTML = `
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <h3 class="font-black text-sm text-blue-700"><i class="fa-solid fa-people-arrows ml-1"></i> نقل موظف بين الإدارات والأقسام</h3>
+                    <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form onsubmit="App.handleExecuteTransfer(event)" class="space-y-4 text-right">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">اختر الموظف المراد نقله</label>
+                        <select id="transferEmpId" class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                            ${this.db.users.map(u => `<option value="${u.id}">${u.name} (حالياً: ${this.getDeptName(u.deptId)} - ${u.sectionName || 'بدون قسم'})</option>`).join("")}
+                        </select>
+                    </div>
+
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                        <h4 class="text-xs font-bold text-blue-900">الجهة المنقول إليها:</h4>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">الإدارة الجديدة</label>
+                            <select id="newTransferDeptId" onchange="App.handleTransferDeptChange()" class="w-full p-2 bg-white border rounded-lg text-xs font-bold">
+                                ${this.db.departments.map(d => `<option value="${d.id}">${d.name}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم الجديد</label>
+                            <select id="newTransferSection" class="w-full p-2 bg-white border rounded-lg text-xs font-bold"></select>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2 border-t">
+                        <button type="button" onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold">إلغاء</button>
+                        <button type="submit" class="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow">تأكيد ونقل الموظف</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById("modalContainer").classList.remove("hidden");
+            this.handleTransferDeptChange();
+        },
+
+        handleTransferDeptChange() {
+            const deptId = document.getElementById("newTransferDeptId").value;
+            const secSel = document.getElementById("newTransferSection");
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (dept && dept.sections && dept.sections.length > 0) {
+                secSel.innerHTML = dept.sections.map(s => `<option value="${s}">${s}</option>`).join("");
+            } else {
+                secSel.innerHTML = `<option value="">بدون قسم تابع</option>`;
+            }
+        },
+
+        handleExecuteTransfer(e) {
+            e.preventDefault();
+            const uId = document.getElementById("transferEmpId").value;
+            const newDept = document.getElementById("newTransferDeptId").value;
+            const newSec = document.getElementById("newTransferSection").value;
+
+            const u = this.db.users.find(x => x.id === uId);
+            if (u) {
+                u.deptId = newDept;
+                u.sectionName = newSec;
+                this.saveDB();
+                this.closeModal();
+                this.setTab("admin_users");
+                alert(`تم نقل الموظف ${u.name} بنجاح.`);
+            }
+        },
+
+        // 7. Password Reset Requests View
+        renderAdminResetsView(container) {
+            container.innerHTML = `
+                <div class="mb-6">
+                    <h2 class="text-xl font-black text-slate-800">طلبات استعادة وإعادة ضبط كلمات المرور</h2>
+                    <p class="text-xs text-slate-500 font-semibold">متابعة الموظفين الذين نسوا كلمات المرور وتوليد كلمات مرور مؤقتة جديدة لهم</p>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-slate-50 text-slate-600 font-bold border-b">
+                            <tr>
+                                <th class="p-3.5">اسم الموظف المستعلم</th>
+                                <th class="p-3.5">اسم المستخدم</th>
+                                <th class="p-3.5">تاريخ الطلب</th>
+                                <th class="p-3.5">الحالة</th>
+                                <th class="p-3.5 text-center">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                            ${this.db.resetRequests.length === 0 ? `
+                                <tr><td colspan="5" class="p-8 text-center text-slate-400">لا توجد طلبات استعادة معلقة</td></tr>
+                            ` : this.db.resetRequests.map(r => `
+                                <tr>
+                                    <td class="p-3.5 font-bold">${r.name}</td>
+                                    <td class="p-3.5 font-mono text-emerald-800">${r.username}</td>
+                                    <td class="p-3.5">${r.requestDate}</td>
+                                    <td class="p-3.5">${r.status === 'pending' ? '<span class="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-bold">بانتظار الضبط</span>' : '<span class="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">تم الضبط</span>'}</td>
+                                    <td class="p-3.5 text-center">
+                                        ${r.status === 'pending' ? `
+                                            <button onclick="App.processPasswordReset('${r.id}')" class="px-3 py-1 bg-emerald-700 text-white rounded-lg font-bold text-xs shadow">
+                                                توليد كلمة سر مؤقتة
+                                            </button>
+                                        ` : '<span class="text-slate-400">مكتمل</span>'}
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        },
+
+        openResetRequestModal() {
+            const mc = document.getElementById("modalContent");
+            mc.innerHTML = `
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <h3 class="font-black text-sm text-slate-800">طلب إعادة ضبط كلمة المرور</h3>
+                    <button onclick="App.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form onsubmit="App.handleSendResetRequest(event)" class="space-y-4 text-right">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">اسم المستخدم أو الرقم الوظيفي *</label>
+                        <input type="text" id="resetUserInput" required placeholder="أدخل اسم المستخدم المسجل..." class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
+                    </div>
+                    <p class="text-xs text-slate-500">سيتم إرسال تنبيه إلى مدير النظام التقني ليقوم بتوليد كلمة مرور مؤقتة لك.</p>
+                    <div class="flex justify-end gap-2 pt-2 border-t">
+                        <button type="button" onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold">إلغاء</button>
+                        <button type="submit" class="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow">إرسال لمدير النظام</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById("modalContainer").classList.remove("hidden");
+        },
+
+        handleSendResetRequest(e) {
+            e.preventDefault();
+            const val = document.getElementById("resetUserInput").value.trim().toLowerCase();
+            const user = this.db.users.find(u => u.username.toLowerCase() === val || u.empId.toLowerCase() === val);
+            if (!user) {
+                alert("لم يتم العثور على هذا المستخدم في قاعدة البيانات!");
+                return;
+            }
+            this.db.resetRequests.unshift({
+                id: "rst_" + Date.now(),
+                userId: user.id,
+                username: user.username,
+                name: user.name,
+                requestDate: new Date().toISOString().split("T")[0],
+                status: "pending"
+            });
+            this.saveDB();
+            this.closeModal();
+            alert("تم إرسال طلبك إلى مدير النظام، يرجى مراجعته لاستلام كلمة المرور المؤقتة.");
+        },
+
+        processPasswordReset(reqId) {
+            const req = this.db.resetRequests.find(r => r.id === reqId);
+            if (!req) return;
+            const user = this.db.users.find(u => u.id === req.userId);
+            if (!user) return;
+
+            const tempPass = "pass" + Math.floor(1000 + Math.random() * 9000);
+            user.password = tempPass;
+            user.mustChangePass = true;
+            req.status = "completed";
+            this.saveDB();
+            this.setTab("admin_resets");
+            alert(`تم توليد كلمة مرور مؤقتة للموظف (${user.name}):\n\nكلمة المرور المؤقتة: ${tempPass}\n\nيُرجى تسليمها له ليقوم بتغييرها عند أول دخول.`);
+        },
+
+        // 8. System & Settings View (Full Features & Safeguards)
+        renderSettingsView(container) {
+            container.innerHTML = `
+                <div class="mb-6">
+                    <h2 class="text-xl font-black text-slate-800">إعدادات النظام والدوام والهيكل الإداري</h2>
+                    <p class="text-xs text-slate-500 font-semibold">تخصيص الشعار، مواعيد الدوام الرسمي، وحوكمة الهيكل التنظيمي والنسخ الاحتياطي</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
+                    <!-- General Org & Logo -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
+                            <i class="fa-solid fa-building-flag text-emerald-700"></i> بيانات المنشأة والشعار
+                        </h3>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">اسم المنشأة / الإدارة العامة</label>
+                            <input type="text" id="setGenDept" value="${this.db.settings.generalDept}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">شعار المنشأة (PNG / JPG / SVG)</label>
+                            <input type="file" id="setLogoFile" accept="image/*" onchange="App.handleLogoUpload(event)" class="text-xs w-full">
+                            <div class="flex items-center gap-3 mt-3">
+                                <div id="logoPreviewBox" class="w-16 h-16 border rounded-xl p-1 bg-slate-50 flex items-center justify-center overflow-hidden">
+                                    ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<span class="text-[10px] text-slate-400">لا يوجد</span>`}
+                                </div>
+                                ${this.db.settings.logoData ? `<button onclick="App.removeLogo()" class="text-xs text-red-600 font-bold hover:underline">حذف الشعار الحالي</button>` : ''}
+                            </div>
+                        </div>
+                        <button onclick="App.saveGeneralSettings()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ بيانات المنشأة</button>
+                    </div>
+
+                    <!-- Work Timings (For Auto Calculation) -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
+                            <i class="fa-solid fa-clock text-emerald-700"></i> مواعيد الدوام الرسمي واحتساب الساعات آلياً
+                        </h3>
+                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر بشكل آلي دون تدخل بشري.</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">بداية الدوام الرسمي</label>
+                                <input type="time" id="setWorkStart" value="${this.db.settings.workStartTime || '07:30'}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">نهاية الدوام الرسمي</label>
+                                <input type="time" id="setWorkEnd" value="${this.db.settings.workEndTime || '14:30'}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                            </div>
+                        </div>
+                        <button onclick="App.saveWorkTimes()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ مواعيد الدوام</button>
+                    </div>
+
+                    <!-- Supabase Cloud Sync Settings -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
+                        <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
+                            <i class="fa-solid fa-cloud text-emerald-700"></i> الربط بقاعدة بيانات Supabase السحابية (مجاناً)
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Project URL (رابط المشروع)</label>
+                                <input type="text" id="setSupabaseUrl" value="${this.db.settings.supabaseUrl || ''}" placeholder="https://xxxx.supabase.co" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Anon / Public API Key</label>
+                                <input type="text" id="setSupabaseKey" value="${this.db.settings.supabaseKey || ''}" placeholder="sb_publishable_..." class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-mono">
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="App.saveSupabaseConfig()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ وتوصيل سحابياً</button>
+                            <button onclick="App.syncToSupabase(); alert('جاري المزامنة مع السحابة...');" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs shadow">مزامنة البيانات الآن</button>
+                        </div>
+                    </div>
+
+                    <!-- Organization Structure Governance (CRUD with Deletion Guard) -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-sitemap text-emerald-700"></i> إدارة الهيكل التنظيمي (الإدارات والأقسام)
+                            </h3>
+                            <button onclick="App.openAddDepartmentModal()" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold shadow flex items-center gap-1">
+                                <i class="fa-solid fa-plus"></i> إضافة إدارة جديدة
+                            </button>
+                        </div>
+
+                        <div class="space-y-3">
+                            ${this.db.departments.map(dept => {
+                                const deptUsersCount = this.db.users.filter(u => u.deptId === dept.id).length;
+                                return `
+                                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                                        <div class="flex flex-wrap justify-between items-center gap-2">
+                                            <div class="flex items-center gap-2">
+                                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                                                <h4 class="font-bold text-xs text-slate-800">${dept.name}</h4>
+                                                <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">${deptUsersCount} موظف مسجل</span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5">
+                                                <button onclick="App.openRenameDeptModal('${dept.id}')" title="تعديل مسمى الإدارة" class="p-1 text-blue-600 hover:bg-blue-50 rounded text-xs font-bold">
+                                                    <i class="fa-solid fa-pen"></i> تعديل
+                                                </button>
+                                                <button onclick="App.openAddSectionModal('${dept.id}')" title="إضافة قسم تابع" class="p-1 text-emerald-700 hover:bg-emerald-50 rounded text-xs font-bold">
+                                                    <i class="fa-solid fa-plus"></i> إضافة قسم
+                                                </button>
+                                                <button onclick="App.safeDeleteDepartment('${dept.id}')" title="حذف الإدارة" class="p-1 text-red-600 hover:bg-red-50 rounded text-xs font-bold">
+                                                    <i class="fa-solid fa-trash-can"></i> حذف
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Sections Under this Dept -->
+                                        <div class="flex flex-wrap gap-2 mt-2.5 pt-2 border-t border-slate-200/60">
+                                            ${dept.sections && dept.sections.length > 0 ? dept.sections.map(sec => {
+                                                const secUsersCount = this.db.users.filter(u => u.deptId === dept.id && u.sectionName === sec).length;
+                                                return `
+                                                    <div class="bg-white border rounded-lg px-2.5 py-1 flex items-center gap-2 shadow-xs text-xs">
+                                                        <span class="font-semibold text-slate-700">${sec}</span>
+                                                        <span class="text-[10px] text-slate-400">(${secUsersCount} موظف)</span>
+                                                        <button onclick="App.openRenameSectionModal('${dept.id}', '${sec}')" title="تعديل اسم القسم" class="text-blue-500 hover:text-blue-700"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                                                        <button onclick="App.safeDeleteSection('${dept.id}', '${sec}')" title="حذف القسم" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-xmark"></i></button>
+                                                    </div>
+                                                `;
+                                            }).join("") : `<span class="text-xs text-slate-400">لا توجد أقسام فرعية مسجلة لهذه الإدارة.</span>`}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join("")}
+                        </div>
+                    </div>
+
+                    <!-- Backup, Restore & Reset Hub -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
+                        <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
+                            <i class="fa-solid fa-database text-emerald-700"></i> مركز النسخ الاحتياطي واستعادة وتهيئة النظام
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="p-3.5 bg-slate-50 border rounded-xl text-center space-y-2">
+                                <i class="fa-solid fa-file-arrow-down text-2xl text-emerald-700"></i>
+                                <h4 class="font-bold text-xs text-slate-800">تصدير نسخة احتياطية (JSON)</h4>
+                                <p class="text-[11px] text-slate-500">تنزيل كامل ملفات وقاعدة بيانات النظام على جهازك</p>
+                                <button onclick="App.exportBackupJSON()" class="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow">تصدير الآن</button>
+                            </div>
+
+                            <div class="p-3.5 bg-slate-50 border rounded-xl text-center space-y-2">
+                                <i class="fa-solid fa-file-arrow-up text-2xl text-blue-600"></i>
+                                <h4 class="font-bold text-xs text-slate-800">استعادة نسخة احتياطية</h4>
+                                <p class="text-[11px] text-slate-500">رفع ملف نسخة سابقة لاسترجاع البيانات بالكامل</p>
+                                <input type="file" id="restoreFileInput" accept=".json" onchange="App.importBackupJSON(event)" class="text-xs w-full">
+                            </div>
+
+                            <div class="p-3.5 bg-red-50 border border-red-200 rounded-xl text-center space-y-2">
+                                <i class="fa-solid fa-triangle-exclamation text-2xl text-red-600"></i>
+                                <h4 class="font-bold text-xs text-red-700">تهيئة وتصفير النظام</h4>
+                                <p class="text-[11px] text-red-600">مسح البيانات بالكامل وتوليد نسخة احتياطية فورية قبل الحذف</p>
+                                <button onclick="App.factoryResetSystem()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs shadow">تهيئة النظام</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        },
+
+        handleLogoUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                App.db.settings.logoData = evt.target.result;
+                App.saveDB();
+                App.setTab("settings");
+            };
+            reader.readAsDataURL(file);
+        },
+
+        removeLogo() {
+            if (confirm("هل تريد إزالة الشعار المخصص والعودة للشعار الافتراضي؟")) {
+                this.db.settings.logoData = "";
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        saveGeneralSettings() {
+            this.db.settings.generalDept = document.getElementById("setGenDept").value.trim();
+            this.saveDB();
+            alert("تم حفظ بيانات المنشأة بنجاح.");
+        },
+
+        saveWorkTimes() {
+            this.db.settings.workStartTime = document.getElementById("setWorkStart").value;
+            this.db.settings.workEndTime = document.getElementById("setWorkEnd").value;
+            this.saveDB();
+            alert("تم تحديث مواعيد الدوام الرسمي وسيعتمدها النظام تلقائياً في حساب الساعات.");
+        },
+
+        saveSupabaseConfig() {
+            this.db.settings.supabaseUrl = document.getElementById("setSupabaseUrl").value.trim();
+            this.db.settings.supabaseKey = document.getElementById("setSupabaseKey").value.trim();
+            this.saveDB();
+            this.initSupabase();
+            alert("تم حفظ إعدادات Supabase وتفعيل الاتصال.");
+        },
+
+        // Department CRUD and Integrity Check
+        openAddDepartmentModal() {
+            const name = prompt("أدخل مسمى الإدارة الجديدة:");
+            if (name && name.trim()) {
+                this.db.departments.push({
+                    id: "dept_" + Date.now(),
+                    name: name.trim(),
+                    sections: []
+                });
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        openRenameDeptModal(deptId) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const newName = prompt("أدخل المسمى الجديد للإدارة:", dept.name);
+            if (newName && newName.trim() && newName.trim() !== dept.name) {
+                dept.name = newName.trim();
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        safeDeleteDepartment(deptId) {
+            const count = this.db.users.filter(u => u.deptId === deptId).length;
+            if (count > 0) {
+                alert(`⚠️ تعذر الحذف!\n\nهناك (${count}) موظف مسجلون تحت هذه الإدارة حالياً.\nيمنع النظام حذف أي إدارة أو قسم قبل نقل الموظفين منها إلى إدارة أخرى لحفظ سجلاتهم.`);
+                return;
+            }
+            if (confirm("هل أنت متأكد من حذف هذه الإدارة لعدم وجود موظفين مسجلين بها؟")) {
+                this.db.departments = this.db.departments.filter(d => d.id !== deptId);
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        openAddSectionModal(deptId) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const sec = prompt(`أدخل اسم القسم التابع لـ (${dept.name}):`);
+            if (sec && sec.trim()) {
+                if (!dept.sections) dept.sections = [];
+                dept.sections.push(sec.trim());
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        openRenameSectionModal(deptId, oldSec) {
+            const dept = this.db.departments.find(d => d.id === deptId);
+            if (!dept) return;
+            const newSec = prompt("أدخل اسم القسم الجديد:", oldSec);
+            if (newSec && newSec.trim() && newSec.trim() !== oldSec) {
+                const idx = dept.sections.indexOf(oldSec);
+                if (idx !== -1) dept.sections[idx] = newSec.trim();
+                this.db.users.forEach(u => {
+                    if (u.deptId === deptId && u.sectionName === oldSec) u.sectionName = newSec.trim();
+                });
+                this.saveDB();
+                this.setTab("settings");
+            }
+        },
+
+        safeDeleteSection(deptId, secName) {
+            const count = this.db.users.filter(u => u.deptId === deptId && u.sectionName === secName).length;
+            if (count > 0) {
+                alert(`⚠️ لا يمكن حذف القسم!\n\nيوجد (${count}) موظف مسجلون في هذا القسم.\nيرجى استخدام خيار (نقل موظفين بين الإدارات) لنقلهم أولاً.`);
+                return;
+            }
+            if (confirm(`هل أنت متأكد من حذف قسم (${secName})؟`)) {
+                const dept = this.db.departments.find(d => d.id === deptId);
+                if (dept && dept.sections) {
+                    dept.sections = dept.sections.filter(s => s !== secName);
+                    this.saveDB();
+                    this.setTab("settings");
+                }
+            }
+        },
+
+        // Backup & Restore
+        exportBackupJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.db, null, 2));
+            const a = document.createElement('a');
+            a.setAttribute("href", dataStr);
+            a.setAttribute("download", `LEAVE_SYSTEM_BACKUP_${new Date().toISOString().split("T")[0]}.json`);
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        },
+
+        importBackupJSON(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const parsed = JSON.parse(evt.target.result);
+                    if (parsed.users && parsed.departments) {
+                        App.db = parsed;
+                        App.saveDB();
+                        alert("تمت استعادة النسخة الاحتياطية بنجاح!");
+                        location.reload();
+                    } else {
+                        alert("الملف غير صالح أو لا يحتوي على بنية بيانات النظام الصحيحة.");
+                    }
+                } catch(err) {
+                    alert("خطأ أثناء قراءة ملف النسخة الاحتياطية.");
+                }
+            };
+            reader.readAsText(file);
+        },
+
+        factoryResetSystem() {
+            if (confirm("⚠️ تحذير شديد الأهمية:\nسيتم حذف جميع البيانات والطلبات وتصفير النظام بالكامل!\nسيقوم النظام فوراً بتنزيل نسخة احتياطية قبل التصفير لحفظ بياناتك.\n\nهل تريد المتابعة؟")) {
+                this.exportBackupJSON();
+                localStorage.removeItem("LEAVE_SYS_DATA");
+                this.db = DB_SCHEMA;
+                this.saveDB();
+                alert("تم تهيئة النظام بالكامل وتنزيل نسخة احتياطية للأمان.");
+                location.reload();
+            }
+        },
+
+        // 9. Reports & Print Resolution
+        renderReportsView(container) {
+            const isSuper = this.currentUser.role === 'super_admin';
+            let list = isSuper ? this.db.requests : this.db.requests.filter(r => r.userId === this.currentUser.id);
+
+            container.innerHTML = `
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">التقارير والإحصائيات الشاملة</h2>
+                        <p class="text-xs text-slate-500 font-semibold">استعراض وتصدير بيانات الاستئذانات وساعات الغياب والقرارات</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="App.exportReportsCSV()" class="px-4 py-2 bg-emerald-800 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-excel"></i> تصدير Excel (CSV)
+                        </button>
+                        <button onclick="window.print()" class="px-4 py-2 bg-slate-700 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5">
+                            <i class="fa-solid fa-print"></i> طباعة التقرير
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-slate-50 text-slate-600 font-bold border-b">
+                            <tr>
+                                <th class="p-3.5">الرقم</th>
+                                <th class="p-3.5">الموظف</th>
+                                <th class="p-3.5">الإدارة والقسم</th>
+                                <th class="p-3.5">النوع</th>
+                                <th class="p-3.5">تاريخ الاستئذان</th>
+                                <th class="p-3.5">الساعات</th>
+                                <th class="p-3.5">الحالة</th>
+                                <th class="p-3.5">المعتمد</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
+                            ${list.map(r => `
+                                <tr>
+                                    <td class="p-3.5 font-bold">${r.refNo}</td>
+                                    <td class="p-3.5 font-bold">${r.userName}</td>
+                                    <td class="p-3.5">${this.getDeptName(r.deptId)} - ${r.sectionName || ''}</td>
+                                    <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
+                                    <td class="p-3.5">${r.leaveDate}</td>
+                                    <td class="p-3.5 font-bold">${r.hours} س</td>
+                                    <td class="p-3.5">${this.getStatusBadge(r.status)}</td>
+                                    <td class="p-3.5 text-slate-500">${r.decisionBy || '-'}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        },
+
+        exportReportsCSV() {
+            let rows = [["رقم الطلب", "الموظف", "الرقم الوظيفي", "الإدارة", "القسم", "النوع", "التاريخ", "الساعات", "الحالة", "المعتمد"]];
+            this.db.requests.forEach(r => {
+                rows.push([r.refNo, r.userName, r.empId, this.getDeptName(r.deptId), r.sectionName || '', r.type, r.leaveDate, r.hours, r.status, r.decisionBy || '']);
+            });
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.join(",")).join("\n");
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `leave_report_${new Date().toISOString().split("T")[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        },
+
+        printResolution(reqId) {
+            const req = this.db.requests.find(x => x.id === reqId);
+            if (!req) return;
+            const printBox = document.getElementById("printableResolutionContainer");
+
+            printBox.innerHTML = `
+                <div class="max-w-3xl mx-auto p-8 border-2 border-slate-800 rounded-2xl bg-white text-right space-y-6">
+                    <!-- Header -->
+                    <div class="flex justify-between items-center border-b-2 border-slate-800 pb-4">
+                        <div class="text-right text-xs font-bold leading-relaxed">
+                            <p>${this.db.settings.orgName}</p>
+                            <p class="text-sm font-black">${this.db.settings.generalDept}</p>
+                            <p>${this.getDeptName(req.deptId)}</p>
+                            <p>${req.sectionName || ''}</p>
+                        </div>
+                        <div class="w-20 h-20 border border-slate-300 rounded-xl p-1 flex items-center justify-center">
+                            ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<i class="fa-solid fa-stamp text-4xl text-slate-700"></i>`}
+                        </div>
+                        <div class="text-left text-xs font-mono font-bold leading-relaxed">
+                            <p>رقم القرار: ${req.refNo}</p>
+                            <p>تاريخ الرفع: ${req.applyDate}</p>
+                            <p>تاريخ الاستئذان: ${req.leaveDate}</p>
+                        </div>
+                    </div>
+
+                    <div class="text-center py-2">
+                        <h2 class="text-xl font-black underline underline-offset-8">قرار موافقة على طلب استئذان موظف</h2>
+                    </div>
+
+                    <!-- Details Table -->
+                    <table class="w-full border-collapse border border-slate-400 text-xs">
+                        <tr>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold w-1/4">اسم الموظف:</td>
+                            <td class="border border-slate-300 p-2 font-bold">${req.userName}</td>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold w-1/4">الرقم الوظيفي:</td>
+                            <td class="border border-slate-300 p-2">${req.empId}</td>
+                        </tr>
+                        <tr>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold">المسمى الوظيفي:</td>
+                            <td class="border border-slate-300 p-2">${req.jobTitle}</td>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold">نوع الاستئذان:</td>
+                            <td class="border border-slate-300 p-2 font-bold">${this.getTypeBadge(req.type)}</td>
+                        </tr>
+                        <tr>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold">التوقيت والمدة:</td>
+                            <td class="border border-slate-300 p-2 font-bold">${req.timingText} (${req.hours} ساعات)</td>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold">تاريخ الاستئذان:</td>
+                            <td class="border border-slate-300 p-2">${req.leaveDate}</td>
+                        </tr>
+                        <tr>
+                            <td class="border border-slate-300 bg-slate-100 p-2 font-bold">سبب الاستئذان:</td>
+                            <td colspan="3" class="border border-slate-300 p-2">${req.reason}</td>
+                        </tr>
+                    </table>
+
+                    <!-- Decision Text -->
+                    <div class="p-4 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold leading-relaxed">
+                        بناءً على الصلاحيات المخولة نظاماً، تمت الموافقة والاعتماد الإداري على طلب الاستئذان الموضح أعلاه، وتعتبر هذه الوثيقة إشعاراً رسمياً معتمداً وموثقاً إلكترونياً لدى الإدارة.
+                    </div>
+
+                    <!-- Signatures & QR -->
+                    <div class="flex justify-between items-end pt-6">
+                        <div id="printQrCode" class="w-24 h-24 border p-1 bg-white rounded"></div>
+                        <div class="text-center space-y-1">
+                            <p class="text-xs font-bold text-slate-600">المعتمد والمخول إدارياً:</p>
+                            <p class="text-xs font-black text-slate-800">${req.decisionBy}</p>
+                            <div class="h-14 flex items-center justify-center">
+                                ${req.decisionSign ? `<img src="${req.decisionSign}" class="max-h-full max-w-[140px] object-contain">` : `<span class="text-xs font-serif text-slate-400">توقيع إلكتروني معتمد</span>`}
+                            </div>
+                            <p class="text-[10px] text-slate-400">التاريخ: ${req.decisionDate}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            new QRCode(document.getElementById("printQrCode"), {
+                text: `LEAVE-VERIFY:${req.refNo}|${req.userName}|${req.leaveDate}|VALID`,
+                width: 90,
+                height: 90
+            });
+
+            printBox.classList.remove("hidden");
+            window.print();
+            printBox.classList.add("hidden");
+        },
+
+        // Helper getters
+        getDeptName(id) {
+            const d = this.db.departments.find(x => x.id === id);
+            return d ? d.name : "الإدارة العامة";
+        },
+
+        closeModal() {
+            document.getElementById("modalContainer").classList.add("hidden");
+        }
+    };
+
+    // Initialize application on page load
+    window.addEventListener("DOMContentLoaded", () => {
+        App.init();
+    });
+    </script>
+</body>
+</html>
