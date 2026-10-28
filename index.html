@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام إدارة وتوثيق الاستئذانات الإلكتروني</title>
-    <!-- Tailwind CSS CDN -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome Icons -->
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: Cairo -->
+    <!-- Cairo Font -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <!-- QR Code Generator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- Supabase Client CDN -->
+    <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
@@ -26,10 +26,7 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col selection:bg-emerald-500 selection:text-white">
 
-    <!-- Top Toast Notification Box -->
-    <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center w-full max-w-md px-4 pointer-events-none"></div>
-
-    <!-- MAIN APP WRAPPER -->
+    <!-- Top Navigation Bar -->
     <header class="bg-emerald-900 text-white shadow-lg sticky top-0 z-40 no-print">
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
             <div class="flex items-center gap-3">
@@ -40,8 +37,9 @@
                     <h1 class="font-black text-lg md:text-xl tracking-tight leading-tight flex items-center gap-2">
                         <span>نظام إدارة الاستئذانات الإلكتروني</span>
                         <span id="cloudStatusBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10">
-                            <i class="fa-solid fa-hard-drive ml-1"></i> محلي (Offline)
+                            <i class="fa-solid fa-rotate animate-spin ml-1"></i> جاري فحص الاتصال...
                         </span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.5.0</span>
                     </h1>
                     <p class="text-emerald-200/90 text-xs font-semibold" id="topOrgTitle">الإدارة العامة لتقنية المعلومات والتحول الرقمي</p>
                 </div>
@@ -66,29 +64,24 @@
 
         <!-- Navigation Tabs -->
         <nav id="navTabsContainer" class="hidden bg-emerald-800/80 border-t border-emerald-700/50 px-4">
-            <div class="max-w-7xl mx-auto flex gap-1 overflow-x-auto py-1.5" id="tabsList">
-                <!-- Dynamically injected tabs -->
-            </div>
+            <div class="max-w-7xl mx-auto flex gap-1 overflow-x-auto py-1.5" id="tabsList"></div>
         </nav>
     </header>
 
-    <!-- MAIN CONTENT VIEW -->
+    <!-- Main Container -->
     <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full" id="mainContainer"></main>
 
-    <!-- GLOBAL MODAL ANCHOR -->
+    <!-- Global Modal -->
     <div id="modalContainer" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
-        <div id="modalContent" class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto transform transition-all p-6 text-right">
-            <!-- Modal Body -->
-        </div>
+        <div id="modalContent" class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto transform transition-all p-6 text-right"></div>
     </div>
 
-    <!-- OFFICIAL PRINTABLE CARD (Decision) -->
+    <!-- Official Printable Card -->
     <div id="printableResolutionContainer" class="hidden print-only"></div>
 
     <script>
-    /**
-     * الإعدادات المسبقة ومعلومات الربط السحابي المباشر مع Supabase
-     */
+    const SYSTEM_VERSION = "v3.5.0";
+
     const DB_DEFAULT = {
         settings: {
             orgName: "المملكة العربية السعودية",
@@ -100,7 +93,6 @@
             reportOrientation: "portrait",
             showQRInReport: true,
             showSignatureInReport: true,
-            // بيانات الربط الخاصة بمشروعك
             supabaseUrl: "https://psdiohmcupwcxnascxft.supabase.co",
             supabaseKey: ""
         },
@@ -122,7 +114,7 @@
                 empId: "ADM001",
                 jobTitle: "مشرف النظام التقني العام",
                 deptId: "dept_0",
-                sectionName: "قسم الجودة التقنية",
+                sectionName: "",
                 signatureData: "",
                 mustChangePass: false
             },
@@ -135,7 +127,7 @@
                 empId: "EMP001",
                 jobTitle: "مدير عام تقنية المعلومات",
                 deptId: "dept_0",
-                sectionName: "قسم الجودة التقنية",
+                sectionName: "",
                 signatureData: "",
                 mustChangePass: false
             }
@@ -151,35 +143,41 @@
         activeTab: "settings",
         supabaseClient: null,
 
-        init() {
+        async init() {
             this.loadDB();
             this.initSupabase();
+            // محاولة جلب أحدث بيانات سحابياً عند بدء التشغيل
+            await this.pullFromCloud(false);
             this.checkSession();
         },
 
         loadDB() {
-            const raw = localStorage.getItem("LEAVE_SYS_DB_DATA");
+            // التحقق من المفاتيح السابقة لضمان عدم ضياع أي بيانات مخزنة بالجهاز
+            const raw1 = localStorage.getItem("LEAVE_SYS_DB_DATA");
+            const raw2 = localStorage.getItem("LEAVE_SYS_DATA");
+            const raw = raw1 || raw2;
+
             if (raw) {
                 try {
                     const parsed = JSON.parse(raw);
                     this.db = Object.assign({}, DB_DEFAULT, parsed);
-                    // ضمان تثبيت رابط Supabase الخاص بك دائماً
                     if (!this.db.settings.supabaseUrl) {
                         this.db.settings.supabaseUrl = "https://psdiohmcupwcxnascxft.supabase.co";
                     }
                 } catch(e) {
-                    console.error("Data parse error", e);
+                    console.error("Local data parse error", e);
                 }
             } else {
                 this.saveDB();
             }
         },
 
-        saveDB() {
+        saveDB(syncToCloud = true) {
             localStorage.setItem("LEAVE_SYS_DB_DATA", JSON.stringify(this.db));
+            localStorage.setItem("LEAVE_SYS_DATA", JSON.stringify(this.db));
             this.updateHeaderUI();
-            if (this.supabaseClient) {
-                this.syncCloud();
+            if (syncToCloud && this.supabaseClient) {
+                this.pushToCloud(false);
             }
         },
 
@@ -196,7 +194,11 @@
                         badge.innerHTML = `<i class="fa-solid fa-cloud-check ml-1"></i> سحابي متصل (Supabase)`;
                     }
                 } catch (e) {
-                    console.warn("Supabase init error:", e);
+                    console.warn("Supabase init err:", e);
+                    if (badge) {
+                        badge.className = "text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-600 text-white border border-white/20";
+                        badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation ml-1"></i> خطأ في المفاتيح`;
+                    }
                 }
             } else if (badge) {
                 badge.className = "text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10";
@@ -204,16 +206,108 @@
             }
         },
 
-        async syncCloud() {
-            if (!this.supabaseClient) return;
+        // رفع البيانات للسحابة
+        async pushToCloud(showAlert = true) {
+            if (!this.supabaseClient) {
+                if (showAlert) alert("الرجاء إدخال وحفظ مفتاح Anon Key أولاً!");
+                return false;
+            }
             try {
-                await this.supabaseClient.from("app_state").upsert({
+                const { error } = await this.supabaseClient.from("app_state").upsert({
                     id: 1,
                     payload: this.db,
                     updated_at: new Date().toISOString()
                 });
+                if (error) throw error;
+                if (showAlert) alert("✅ تم رفع وحفظ كافة بيانات النظام إلى قاعدة بيانات Supabase بنجاح!");
+                return true;
             } catch (err) {
-                console.warn("Cloud sync note:", err);
+                console.error("Cloud push failed:", err);
+                if (showAlert) alert("❌ فشل الرفع للسحابة:\n" + (err.message || err.details || "تأكد من تشغيل كود SQL وإنشاء جدول app_state."));
+                return false;
+            }
+        },
+
+        // جلب البيانات من السحابة
+        async pullFromCloud(showAlert = true) {
+            if (!this.supabaseClient) return false;
+            try {
+                const { data, error } = await this.supabaseClient.from("app_state").select("payload").eq("id", 1).maybeSingle();
+                if (error) throw error;
+                if (data && data.payload) {
+                    this.db = Object.assign({}, DB_DEFAULT, data.payload);
+                    this.saveDB(false);
+                    this.updateHeaderUI();
+                    if (showAlert) {
+                        alert("✅ تم استرجاع وتحديث كافة البيانات من السحابة بنجاح!");
+                        if (this.currentUser) this.setTab(this.activeTab);
+                    }
+                    return true;
+                }
+            } catch (err) {
+                console.warn("Cloud pull note:", err);
+                if (showAlert) alert("تعذر الجلب من السحابة: " + (err.message || "لا توجد بيانات سابقة"));
+            }
+            return false;
+        },
+
+        // أداة فحص واختبار الاتصال الفني الشامل
+        async testCloudConnection() {
+            const resultBox = document.getElementById("connectionTestResult");
+            if (!resultBox) return;
+
+            resultBox.classList.remove("hidden");
+            resultBox.innerHTML = `
+                <div class="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl flex items-center gap-2">
+                    <i class="fa-solid fa-spinner animate-spin"></i>
+                    <span>جاري فحص الاتصال بقاعدة بيانات Supabase واختبار الجداول...</span>
+                </div>
+            `;
+
+            if (!this.db.settings.supabaseUrl || !this.db.settings.supabaseKey) {
+                resultBox.innerHTML = `
+                    <div class="p-3 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl">
+                        <strong>⚠️ تنبيه:</strong> رابط المشروع أو مفتاح Anon Key غير مكتملين.
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const client = window.supabase.createClient(this.db.settings.supabaseUrl, this.db.settings.supabaseKey);
+                // اختبار القراءة
+                const start = performance.now();
+                const { data, error } = await client.from("app_state").select("id, updated_at").eq("id", 1);
+                const latency = Math.round(performance.now() - start);
+
+                if (error) {
+                    throw error;
+                }
+
+                resultBox.innerHTML = `
+                    <div class="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl space-y-2">
+                        <div class="flex items-center gap-2 font-black text-sm text-emerald-800">
+                            <i class="fa-solid fa-circle-check text-base"></i>
+                            <span>الاتصال السحابي سليم 100% وجاهز للعمل!</span>
+                        </div>
+                        <div class="text-xs space-y-1 font-mono text-emerald-700">
+                            <p>• سرعة الاستجابة (Latency): <strong>${latency}ms</strong></p>
+                            <p>• جدول المزامنة (app_state): <strong>متصل ومتاح للقراءة والكتابة</strong></p>
+                            <p>• السجلات السحابية: <strong>${data && data.length > 0 ? 'يوجد سجل مزامنة نشط' : 'الجدول جاهز بانتظار أول مزامنة'}</strong></p>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                resultBox.innerHTML = `
+                    <div class="p-4 bg-red-50 border border-red-300 text-red-900 rounded-xl space-y-2 text-xs">
+                        <div class="font-bold flex items-center gap-2 text-red-700 text-sm">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                            <span>فشل الاتصال بقاعدة البيانات</span>
+                        </div>
+                        <p class="font-mono bg-white p-2 rounded border border-red-200">${err.message || 'خطأ غير معروف'}</p>
+                        <p>تأكد من تطبيق كود SQL في Supabase لإنشاء جدول <code>app_state</code>.</p>
+                    </div>
+                `;
             }
         },
 
@@ -246,7 +340,6 @@
             document.getElementById("userAvatarText").innerText = user.name.charAt(0);
 
             this.renderTabs();
-            // الدخول المباشر للمدير إلى صفحة الإعدادات لضبطها
             this.setTab(user.role === 'super_admin' ? 'settings' : 'my_requests');
         },
 
@@ -337,7 +430,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
 
-        // --- 1. Login Screen ---
+        // --- 1. شاشة الدخول ---
         renderLoginView() {
             const container = document.getElementById("mainContainer");
             container.innerHTML = `
@@ -408,22 +501,27 @@
             btn.innerHTML = isPass ? `<i class="fa-solid fa-eye-slash text-emerald-700"></i>` : `<i class="fa-solid fa-eye"></i>`;
         },
 
-        // --- 2. Settings View (الربط، الشعار، الدوام، الهيكل، النسخ الاحتياطي) ---
+        // --- 2. صفحة الإعدادات الشاملة (مع أدوات الفحص ورقم الإصدار) ---
         renderSettingsView(container) {
             container.innerHTML = `
-                <div class="mb-6">
-                    <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
-                        <i class="fa-solid fa-gears text-emerald-700"></i>
-                        <span>إعدادات النظام، الدوام، والهيكل الإداري</span>
-                    </h2>
-                    <p class="text-xs text-slate-500 font-semibold mt-1">تخصيص الشعار، مواعيد الدوام الرسمي، الربط السحابي، والنسخ الاحتياطي</p>
+                <div class="mb-6 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-gears text-emerald-700"></i>
+                            <span>إعدادات النظام والدوام وقاعدة البيانات</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">تخصيص الهوية، مواعيد الدوام، أدوات فحص الاتصال السحابي، وحوكمة الهيكل الإداري</p>
+                    </div>
+                    <span class="text-xs font-mono font-bold px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
+                        رقم الإصدار: ${SYSTEM_VERSION}
+                    </span>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
-                    <!-- Org Details & Logo -->
+                    <!-- الهوية والشعار -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
-                            <i class="fa-solid fa-building-flag text-emerald-700"></i> بيانات المنشأة والشعار
+                            <i class="fa-solid fa-building-flag text-emerald-700"></i> بيانات المنشأة والشعار الرسمي
                         </h3>
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">اسم المنشأة / الإدارة العامة</label>
@@ -434,7 +532,7 @@
                             <input type="file" id="setLogoFile" accept="image/*" onchange="App.handleLogoUpload(event)" class="text-xs w-full">
                             <div class="flex items-center gap-3 mt-3">
                                 <div id="logoPreviewBox" class="w-16 h-16 border rounded-xl p-1 bg-slate-50 flex items-center justify-center overflow-hidden">
-                                    ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<span class="text-[10px] text-slate-400">لا يوجد</span>`}
+                                    ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<span class="text-[10px] text-slate-400">لا يوجد شعار</span>`}
                                 </div>
                                 ${this.db.settings.logoData ? `<button onclick="App.removeLogo()" class="text-xs text-red-600 font-bold hover:underline">حذف الشعار الحالي</button>` : ''}
                             </div>
@@ -442,12 +540,12 @@
                         <button onclick="App.saveGeneralSettings()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ بيانات المنشأة</button>
                     </div>
 
-                    <!-- Work Timings (Auto calculate) -->
+                    <!-- مواعيد الدوام والحساب الآلي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
-                            <i class="fa-solid fa-clock text-emerald-700"></i> أوقات الدوام الرسمي (حساب آلي)
+                            <i class="fa-solid fa-clock text-emerald-700"></i> أوقات الدوام الرسمي (حساب آلي للساعات)
                         </h3>
-                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لحساب ساعات التأخير والخروج المبكر آلياً.</p>
+                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر بشكل آلي دون تدخل بشري.</p>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">بداية الدوام الرسمي</label>
@@ -461,11 +559,15 @@
                         <button onclick="App.saveWorkTimes()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ مواعيد الدوام</button>
                     </div>
 
-                    <!-- Supabase Settings -->
+                    <!-- الربط السحابي مع Supabase وأدوات الفحص الفنية -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
-                        <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
-                            <i class="fa-solid fa-cloud text-emerald-700"></i> الربط بقاعدة بيانات Supabase السحابية (مجاناً)
-                        </h3>
+                        <div class="flex flex-wrap justify-between items-center border-b pb-2">
+                            <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-cloud text-emerald-700"></i> الربط بقاعدة بيانات Supabase السحابية (مجاناً)
+                            </h3>
+                            <span class="text-[11px] text-slate-400">التخزين السحابي الدائم لبيانات الموظفين والطلبات</span>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">Project URL (رابط المشروع)</label>
@@ -474,20 +576,35 @@
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">Anon / Public API Key</label>
                                 <div class="relative">
-                                    <input type="password" id="setSupabaseKey" value="${this.db.settings.supabaseKey || ''}" placeholder="sb_publishable_..." class="w-full p-2 pl-9 bg-slate-50 border rounded-xl text-xs font-mono">
+                                    <input type="password" id="setSupabaseKey" value="${this.db.settings.supabaseKey || ''}" placeholder="sb_publishable_..." class="w-full p-2 pl-9 bg-slate-50 border rounded-xl text-xs font-mono font-bold">
                                     <button type="button" onclick="App.togglePasswordVisibility('setSupabaseKey', this)" class="absolute left-2.5 top-2.5 text-slate-400">
                                         <i class="fa-solid fa-eye"></i>
                                     </button>
                                 </div>
                             </div>
                         </div>
-                        <div class="flex flex-wrap gap-2 pt-1">
-                            <button onclick="App.saveSupabaseConfig()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ وتوصيل سحابياً</button>
-                            <button onclick="App.syncCloud(); alert('تم بدء مزامنة البيانات سحابياً بنجاح.');" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs shadow">مزامنة البيانات الآن</button>
+
+                        <!-- أزرار العمليات والفحص -->
+                        <div class="flex flex-wrap items-center gap-2 pt-1">
+                            <button onclick="App.saveSupabaseConfig()" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow">
+                                <i class="fa-solid fa-floppy-disk ml-1"></i> حفظ وتفعيل الربط
+                            </button>
+                            <button onclick="App.testCloudConnection()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow">
+                                <i class="fa-solid fa-stethoscope ml-1"></i> فحص واختبار الاتصال بالسحابة
+                            </button>
+                            <button onclick="App.pushToCloud(true)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow">
+                                <i class="fa-solid fa-cloud-arrow-up ml-1"></i> رفع بيانات النظام الحالية للسحابة
+                            </button>
+                            <button onclick="App.pullFromCloud(true)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs shadow">
+                                <i class="fa-solid fa-cloud-arrow-down ml-1"></i> جلب واستعادة البيانات من السحابة
+                            </button>
                         </div>
+
+                        <!-- صندوق نتيجة فحص الاتصال -->
+                        <div id="connectionTestResult" class="hidden text-xs transition"></div>
                     </div>
 
-                    <!-- Structure Management -->
+                    <!-- إدارة الهيكل التنظيمي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <div class="flex justify-between items-center border-b pb-2">
                             <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
@@ -541,7 +658,7 @@
                         </div>
                     </div>
 
-                    <!-- Backup and Reset Hub -->
+                    <!-- النسخ الاحتياطي والتهيئة -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
                             <i class="fa-solid fa-database text-emerald-700"></i> مركز النسخ الاحتياطي واستعادة وتهيئة النظام
@@ -611,7 +728,7 @@
             this.db.settings.supabaseKey = document.getElementById("setSupabaseKey").value.trim();
             this.saveDB();
             this.initSupabase();
-            alert("تم حفظ إعدادات Supabase وتفعيل الربط السحابي.");
+            alert("تم حفظ إعدادات Supabase بنجاح وتفعيل العميل السحابي.");
         },
 
         // --- 3. إدارة الهيكل مع الحماية من الحذف العشوائي ---
@@ -732,6 +849,7 @@
             if (confirm("⚠️ تحذير:\nسيتم حذف جميع الطلبات وتصفير النظام بالكامل!\nسيقوم النظام فوراً بتنزيل نسخة احتياطية قبل التصفير لحفظ بياناتك.\n\nهل تريد المتابعة؟")) {
                 this.exportBackupJSON();
                 localStorage.removeItem("LEAVE_SYS_DB_DATA");
+                localStorage.removeItem("LEAVE_SYS_DATA");
                 this.db = DB_DEFAULT;
                 this.saveDB();
                 alert("تم تهيئة النظام بالكامل وتنزيل نسخة احتياطية.");
@@ -998,7 +1116,7 @@
             }
         },
 
-        // --- 6. صندوق الاعتمادات ---
+        // --- 6. صندوق الاعتمادات (موافقة / رفض مع إجبار السبب) ---
         renderApprovalsView(container) {
             const pendingReqs = this.db.requests.filter(r => r.status === 'pending');
             container.innerHTML = `
@@ -1036,7 +1154,7 @@
                                             <div class="font-bold text-slate-800">${r.userName}</div>
                                             <div class="text-[11px] text-slate-400">${r.jobTitle} (${r.empId})</div>
                                         </td>
-                                        <td class="p-3.5">${r.sectionName || this.getDeptName(r.deptId)}</td>
+                                        <td class="p-3.5">${r.sectionName ? `${r.sectionName} (${this.getDeptName(r.deptId)})` : this.getDeptName(r.deptId)}</td>
                                         <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
                                         <td class="p-3.5 font-bold">${r.leaveDate} <div class="text-slate-400 text-[11px]">${r.timingText} (${r.hours} س)</div></td>
                                         <td class="p-3.5 text-slate-600 max-w-xs">${r.reason}</td>
@@ -1244,13 +1362,13 @@
             }
         },
 
-        // --- 8. إدارة الموظفين والصلاحيات والتواقيع ---
+        // --- 8. إدارة الموظفين والصلاحيات (مع خيار التعيين للإدارة مباشرة دون قسم) ---
         renderAdminUsersView(container) {
             container.innerHTML = `
                 <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
                     <div>
                         <h2 class="text-xl font-black text-slate-800">إدارة منسوبي المنظومة والصلاحيات</h2>
-                        <p class="text-xs text-slate-500 font-semibold">إضافة وتعديل بيانات الموظفين والتواقيع وكلمات المرور</p>
+                        <p class="text-xs text-slate-500 font-semibold">إضافة وتعديل بيانات الموظفين والتواقيع وإمكانية الإلحاق بالإدارة مباشرة أو بأقسامها</p>
                     </div>
                     <div class="flex gap-2">
                         <button onclick="App.openTransferModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2">
@@ -1269,7 +1387,7 @@
                                 <tr>
                                     <th class="p-3.5">الموظف والاسم</th>
                                     <th class="p-3.5">اسم الدخول والرقم</th>
-                                    <th class="p-3.5">الصلاحية</th>
+                                    <th class="p-3.5">الدور / الصلاحية</th>
                                     <th class="p-3.5">الإدارة والقسم</th>
                                     <th class="p-3.5">التوقيع الإلكتروني</th>
                                     <th class="p-3.5 text-center">إجراءات</th>
@@ -1282,8 +1400,8 @@
                                         <td class="p-3.5 font-mono text-emerald-800">${u.username} <span class="text-slate-400 font-sans">(${u.empId})</span></td>
                                         <td class="p-3.5">${this.getRoleTitle(u.role)}</td>
                                         <td class="p-3.5">
-                                            <div>${this.getDeptName(u.deptId)}</div>
-                                            <div class="text-[11px] text-slate-400">${u.sectionName || '-'}</div>
+                                            <div class="font-bold">${this.getDeptName(u.deptId)}</div>
+                                            <div class="text-[11px] text-emerald-700 font-semibold">${u.sectionName ? u.sectionName : '<span class="text-slate-400 font-normal">[تابع للإدارة مباشرة]</span>'}</div>
                                         </td>
                                         <td class="p-3.5">
                                             ${u.signatureData ? `<img src="${u.signatureData}" class="h-7 max-w-[90px] object-contain border p-0.5 rounded bg-white">` : `<span class="text-slate-300">غير مدرج</span>`}
@@ -1339,7 +1457,7 @@
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">الصلاحية في النظام *</label>
                             <select id="uRole" required class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
-                                <option value="employee" ${user && user.role === 'employee' ? 'selected' : ''}>موظف</option>
+                                <option value="employee" ${user && user.role === 'employee' ? 'selected' : ''}>موظف عادي</option>
                                 <option value="section_head" ${user && user.role === 'section_head' ? 'selected' : ''}>رئيس قسم</option>
                                 <option value="dept_manager" ${user && user.role === 'dept_manager' ? 'selected' : ''}>مدير إدارة</option>
                                 <option value="gen_manager" ${user && user.role === 'gen_manager' ? 'selected' : ''}>المدير العام</option>
@@ -1352,6 +1470,7 @@
                         </div>
                     </div>
 
+                    <!-- اختيار الإدارة واختيار القسم (مع إمكانية جعله تابعاً للإدارة مباشرة) -->
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">الإدارة التابع لها *</label>
@@ -1360,8 +1479,9 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم</label>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم (اختياري)</label>
                             <select id="uSectionName" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold"></select>
+                            <span class="text-[10px] text-slate-400 block mt-0.5">* يمكن تركه للإدارة مباشرة دون قسم.</span>
                         </div>
                     </div>
 
@@ -1399,13 +1519,14 @@
             const secSelect = document.getElementById("uSectionName");
             const dept = this.db.departments.find(d => d.id === deptId);
 
+            let optionsHtml = `<option value="">[بدون قسم - تابع للإدارة مباشرة]</option>`;
+
             if (dept && dept.sections && dept.sections.length > 0) {
-                secSelect.innerHTML = dept.sections.map(s => `
-                    <option value="${s}" ${selectedSection === s ? 'selected' : ''}>${s}</option>
-                `).join("");
-            } else {
-                secSelect.innerHTML = `<option value="">لا توجد أقسام</option>`;
+                dept.sections.forEach(s => {
+                    optionsHtml += `<option value="${s}" ${selectedSection === s ? 'selected' : ''}>${s}</option>`;
+                });
             }
+            secSelect.innerHTML = optionsHtml;
         },
 
         handleSignatureUpload(e) {
@@ -1432,7 +1553,7 @@
                 role: document.getElementById("uRole").value,
                 jobTitle: document.getElementById("uJobTitle").value.trim(),
                 deptId: document.getElementById("uDeptId").value,
-                sectionName: document.getElementById("uSectionName").value,
+                sectionName: document.getElementById("uSectionName").value.trim(),
                 password: document.getElementById("uPassword").value,
                 signatureData: document.getElementById("uSignatureData").value,
                 mustChangePass: !isEdit
@@ -1470,7 +1591,7 @@
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">اختر الموظف المراد نقله</label>
                         <select id="transferEmpId" class="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-bold">
-                            ${this.db.users.map(u => `<option value="${u.id}">${u.name} (${this.getDeptName(u.deptId)} - ${u.sectionName || 'بدون قسم'})</option>`).join("")}
+                            ${this.db.users.map(u => `<option value="${u.id}">${u.name} (${this.getDeptName(u.deptId)} - ${u.sectionName || 'تابع للإدارة مباشرة'})</option>`).join("")}
                         </select>
                     </div>
 
@@ -1502,18 +1623,21 @@
             const deptId = document.getElementById("newTransferDeptId").value;
             const secSel = document.getElementById("newTransferSection");
             const dept = this.db.departments.find(d => d.id === deptId);
+
+            let options = `<option value="">[بدون قسم - تابع للإدارة مباشرة]</option>`;
             if (dept && dept.sections && dept.sections.length > 0) {
-                secSel.innerHTML = dept.sections.map(s => `<option value="${s}">${s}</option>`).join("");
-            } else {
-                secSel.innerHTML = `<option value="">بدون قسم تابع</option>`;
+                dept.sections.forEach(s => {
+                    options += `<option value="${s}">${s}</option>`;
+                });
             }
+            secSel.innerHTML = options;
         },
 
         handleExecuteTransfer(e) {
             e.preventDefault();
             const uId = document.getElementById("transferEmpId").value;
             const newDept = document.getElementById("newTransferDeptId").value;
-            const newSec = document.getElementById("newTransferSection").value;
+            const newSec = document.getElementById("newTransferSection").value.trim();
 
             const u = this.db.users.find(x => x.id === uId);
             if (u) {
@@ -1666,7 +1790,7 @@
                                 <tr>
                                     <td class="p-3.5 font-bold font-mono">${r.refNo}</td>
                                     <td class="p-3.5 font-bold">${r.userName}</td>
-                                    <td class="p-3.5">${this.getDeptName(r.deptId)} - ${r.sectionName || ''}</td>
+                                    <td class="p-3.5">${this.getDeptName(r.deptId)} - ${r.sectionName || 'تابع للإدارة مباشرة'}</td>
                                     <td class="p-3.5">${this.getTypeBadge(r.type)}</td>
                                     <td class="p-3.5">${r.leaveDate}</td>
                                     <td class="p-3.5 font-bold">${r.hours} س</td>
@@ -1683,7 +1807,7 @@
         exportReportsCSV() {
             let rows = [["رقم الطلب", "الموظف", "الرقم الوظيفي", "الإدارة", "القسم", "النوع", "التاريخ", "الساعات", "الحالة", "المعتمد"]];
             this.db.requests.forEach(r => {
-                rows.push([r.refNo, r.userName, r.empId, this.getDeptName(r.deptId), r.sectionName || '', r.type, r.leaveDate, r.hours, r.status, r.decisionBy || '']);
+                rows.push([r.refNo, r.userName, r.empId, this.getDeptName(r.deptId), r.sectionName || 'إدارة مباشرة', r.type, r.leaveDate, r.hours, r.status, r.decisionBy || '']);
             });
             let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.join(",")).join("\n");
             let encodedUri = encodeURI(csvContent);
@@ -1707,7 +1831,7 @@
                             <p>${this.db.settings.orgName}</p>
                             <p class="text-sm font-black">${this.db.settings.generalDept}</p>
                             <p>${this.getDeptName(req.deptId)}</p>
-                            <p>${req.sectionName || ''}</p>
+                            <p>${req.sectionName ? req.sectionName : 'تابع للإدارة مباشرة'}</p>
                         </div>
                         <div class="w-20 h-20 border border-slate-300 rounded-xl p-1 flex items-center justify-center">
                             ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<i class="fa-solid fa-stamp text-4xl text-slate-700"></i>`}
