@@ -65,7 +65,7 @@
                         <span id="cloudStatusBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10">
                             <i class="fa-solid fa-rotate animate-spin ml-1"></i> فحص الاتصال...
                         </span>
-                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.7.0</span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.8.0</span>
                     </h1>
                     <p class="text-emerald-200/90 text-xs font-semibold" id="topOrgTitle">الإدارة العامة لتقنية المعلومات والتحول الرقمي</p>
                 </div>
@@ -106,7 +106,13 @@
     <div id="printableResolutionContainer" class="hidden"></div>
 
     <script>
-    const SYSTEM_VERSION = "v3.7.0";
+    const SYSTEM_VERSION = "v3.8.0";
+
+    // المفاتيح السحابية العامة المضمنة مباشرة لتعمل على كافة الأجهزة تلقائياً
+    const CLOUD_CONFIG = {
+        url: "https://psdiohmcupwcxnascxft.supabase.co",
+        key: "sb_publishable_zJ2G0PO5yegOImQ1F7wL8Q_bMntahhk"
+    };
 
     const DB_DEFAULT = {
         settings: {
@@ -120,8 +126,8 @@
             reportOrientation: "portrait",
             showQRInReport: true,
             showSignatureInReport: true,
-            supabaseUrl: "https://psdiohmcupwcxnascxft.supabase.co",
-            supabaseKey: "sb_publishable_zJ2G0PO5yegOImQ1F7wL8Q_bMntahhk"
+            supabaseUrl: CLOUD_CONFIG.url,
+            supabaseKey: CLOUD_CONFIG.key
         },
         departments: [
             { id: "dept_0", name: "الإدارة العامة (أقسام مباشرة)", sections: ["قسم الجودة التقنية"] },
@@ -173,28 +179,31 @@
         async init() {
             this.loadDB();
             this.initSupabase();
+            // جلب تلقائي لحظي للبيانات من السحابة في أي جهاز أو متصفح يفتح الصفحة
             await this.pullFromCloud(false);
             this.checkSession();
         },
 
         loadDB() {
-            const raw = localStorage.getItem("LEAVE_SYS_DATA_V3") || localStorage.getItem("LEAVE_SYS_DB_DATA") || localStorage.getItem("LEAVE_SYS_DATA");
+            const raw = localStorage.getItem("LEAVE_SYS_DATA_V4") || localStorage.getItem("LEAVE_SYS_DATA_V3") || localStorage.getItem("LEAVE_SYS_DATA");
             if (raw) {
                 try {
                     const parsed = JSON.parse(raw);
                     this.db = Object.assign({}, DB_DEFAULT, parsed);
-                    if (!this.db.settings.supabaseUrl) this.db.settings.supabaseUrl = DB_DEFAULT.settings.supabaseUrl;
-                    if (!this.db.settings.supabaseKey) this.db.settings.supabaseKey = DB_DEFAULT.settings.supabaseKey;
                 } catch(e) {
                     console.error("Local data parse error", e);
                 }
             } else {
-                this.saveDB();
+                this.db = JSON.parse(JSON.stringify(DB_DEFAULT));
             }
+            // إجبار تطبيق المفتاح السحابي الموحد على أي جهاز
+            this.db.settings.supabaseUrl = CLOUD_CONFIG.url;
+            this.db.settings.supabaseKey = CLOUD_CONFIG.key;
+            this.saveDB(false);
         },
 
         saveDB(syncToCloud = true) {
-            localStorage.setItem("LEAVE_SYS_DATA_V3", JSON.stringify(this.db));
+            localStorage.setItem("LEAVE_SYS_DATA_V4", JSON.stringify(this.db));
             this.updateHeaderUI();
             if (syncToCloud && this.supabaseClient) {
                 this.pushToCloud(false);
@@ -202,11 +211,11 @@
         },
 
         initSupabase() {
-            const url = this.db.settings.supabaseUrl;
-            const key = this.db.settings.supabaseKey;
+            const url = CLOUD_CONFIG.url;
+            const key = CLOUD_CONFIG.key;
             const badge = document.getElementById("cloudStatusBadge");
 
-            if (url && key && window.supabase) {
+            if (window.supabase) {
                 try {
                     this.supabaseClient = window.supabase.createClient(url, key);
                     if (badge) {
@@ -243,6 +252,8 @@
                 if (error) throw error;
                 if (data && data.payload) {
                     this.db = Object.assign({}, DB_DEFAULT, data.payload);
+                    this.db.settings.supabaseUrl = CLOUD_CONFIG.url;
+                    this.db.settings.supabaseKey = CLOUD_CONFIG.key;
                     this.saveDB(false);
                     this.updateHeaderUI();
                     if (showAlert) {
@@ -412,7 +423,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
 
-        // --- 1. تسجيل الدخول ---
+        // --- تسجيل الدخول ---
         renderLoginView() {
             const container = document.getElementById("mainContainer");
             container.innerHTML = `
@@ -477,7 +488,7 @@
             btn.innerHTML = isPass ? `<i class="fa-solid fa-eye-slash text-emerald-700"></i>` : `<i class="fa-solid fa-eye"></i>`;
         },
 
-        // --- 2. الرئيسية (المؤشرات والإحصاءات) ---
+        // --- الرئيسية (المؤشرات والإحصاءات) ---
         renderDashboardView(container) {
             const isManager = ['super_admin', 'gen_manager', 'dept_manager', 'section_head'].includes(this.currentUser.role);
             const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
@@ -604,7 +615,7 @@
             `;
         },
 
-        // --- 3. شاشة التقارير الاحترافية (مضبوطة وبدون إكسل) ---
+        // --- شاشة التقارير الاحترافية المحدثة ---
         renderReportsView(container) {
             const isGenManagerOrSuper = ['super_admin', 'gen_manager'].includes(this.currentUser.role);
             const isDeptManager = this.currentUser.role === 'dept_manager';
@@ -636,7 +647,6 @@
                         </div>
                     </div>
 
-                    <!-- الفلتر الذكي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 no-print text-right">
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
@@ -682,7 +692,6 @@
                         </div>
                     </div>
 
-                    <!-- التقرير المعروض والقابل للطباعة -->
                     <div id="reportPrintableArea" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-5">
                         <div class="flex justify-between items-center border-b pb-4 text-right">
                             <div class="space-y-1">
@@ -699,16 +708,13 @@
                             </div>
                         </div>
 
-                        <!-- البطاقات الإحصائية للتقرير -->
                         <div id="reportQuickMetrics" class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border text-center text-xs font-bold"></div>
 
-                        <!-- الجدول -->
                         <div id="reportTableContainer" class="overflow-x-auto"></div>
                     </div>
                 </div>
             `;
 
-            // تشغيل الفلتر مباشرة بعد بناء الواجهة
             setTimeout(() => {
                 this.applyReportFilter();
             }, 50);
@@ -801,7 +807,7 @@
             }
         },
 
-        // --- 4. طباعة القرار الرسمي المعزول ---
+        // --- طباعة القرار الرسمي المعزول ---
         printResolution(reqId) {
             const req = this.db.requests.find(x => x.id === reqId);
             if (!req) return;
@@ -889,7 +895,7 @@
             printBox.classList.add("hidden");
         },
 
-        // --- 5. الإعدادات والدوام والهيكل ---
+        // --- الإعدادات والدوام والهيكل ---
         renderSettingsView(container) {
             container.innerHTML = `
                 <div class="mb-6 flex flex-wrap justify-between items-center gap-3">
@@ -935,7 +941,7 @@
                         <h3 class="font-black text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
                             <i class="fa-solid fa-clock text-emerald-700"></i> أوقات الدوام الرسمي (حساب آلي للساعات)
                         </h3>
-                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر آلياً.</p>
+                        <p class="text-xs text-slate-500">يعتمد النظام هذه المواعيد لاحتساب ساعات التأخير والخروج المبكر بشكل آلي دون تدخل بشري.</p>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">بداية الدوام الرسمي</label>
@@ -952,31 +958,23 @@
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <div class="flex flex-wrap justify-between items-center border-b pb-2">
                             <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
-                                <i class="fa-solid fa-cloud text-emerald-700"></i> الربط بقاعدة بيانات Supabase السحابية (مجاناً)
+                                <i class="fa-solid fa-cloud text-emerald-700"></i> الربط بقاعدة بيانات Supabase السحابية
                             </h3>
-                            <span class="text-[11px] text-slate-400">التخزين السحابي الدائم لبيانات الموظفين والطلبات</span>
+                            <span class="text-[11px] text-emerald-600 font-bold"><i class="fa-solid fa-circle-check ml-1"></i>مفعل ومثبت تلقائياً لكافة المتصفحات</span>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">Project URL (رابط المشروع)</label>
-                                <input type="text" id="setSupabaseUrl" value="${this.db.settings.supabaseUrl}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-mono font-bold">
+                                <input type="text" id="setSupabaseUrl" value="${CLOUD_CONFIG.url}" readonly class="w-full p-2 bg-slate-100 border rounded-xl text-xs font-mono font-bold text-slate-600 cursor-not-allowed">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-600 mb-1">Anon / Public API Key</label>
-                                <div class="relative">
-                                    <input type="password" id="setSupabaseKey" value="${this.db.settings.supabaseKey}" class="w-full p-2 pl-9 bg-slate-50 border rounded-xl text-xs font-mono font-bold">
-                                    <button type="button" onclick="App.togglePasswordVisibility('setSupabaseKey', this)" class="absolute left-2.5 top-2.5 text-slate-400">
-                                        <i class="fa-solid fa-eye"></i>
-                                    </button>
-                                </div>
+                                <input type="password" id="setSupabaseKey" value="${CLOUD_CONFIG.key}" readonly class="w-full p-2 bg-slate-100 border rounded-xl text-xs font-mono font-bold text-slate-600 cursor-not-allowed">
                             </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2 pt-1">
-                            <button onclick="App.saveSupabaseConfig()" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow">
-                                <i class="fa-solid fa-floppy-disk ml-1"></i> حفظ وتفعيل الربط
-                            </button>
                             <button onclick="App.testCloudConnection()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow">
                                 <i class="fa-solid fa-stethoscope ml-1"></i> فحص واختبار الاتصال بالسحابة
                             </button>
@@ -1075,7 +1073,6 @@
             `;
         },
 
-        // --- دوال مساعدة إدارية ---
         handleLogoUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -1108,14 +1105,6 @@
             this.db.settings.workEndTime = document.getElementById("setWorkEnd").value;
             this.saveDB();
             alert("تم حفظ مواعيد الدوام الرسمي وسيعتمدها النظام تلقائياً في حساب الساعات.");
-        },
-
-        saveSupabaseConfig() {
-            this.db.settings.supabaseUrl = document.getElementById("setSupabaseUrl").value.trim();
-            this.db.settings.supabaseKey = document.getElementById("setSupabaseKey").value.trim();
-            this.saveDB();
-            this.initSupabase();
-            alert("تم حفظ إعدادات Supabase وتفعيل الاتصال.");
         },
 
         openAddDepartmentPrompt() {
@@ -1217,6 +1206,8 @@
                     const parsed = JSON.parse(evt.target.result);
                     if (parsed.users && parsed.departments) {
                         App.db = parsed;
+                        App.db.settings.supabaseUrl = CLOUD_CONFIG.url;
+                        App.db.settings.supabaseKey = CLOUD_CONFIG.key;
                         App.saveDB();
                         alert("تمت استعادة النسخة الاحتياطية بنجاح!");
                         location.reload();
@@ -1233,17 +1224,15 @@
         factoryResetSystem() {
             if (confirm("⚠️ تحذير:\nسيتم حذف جميع الطلبات وتصفير النظام بالكامل!\nسيقوم النظام فوراً بتنزيل نسخة احتياطية قبل التصفير لحفظ بياناتك.\n\nهل تريد المتابعة؟")) {
                 this.exportBackupJSON();
-                localStorage.removeItem("LEAVE_SYS_DATA_V3");
-                localStorage.removeItem("LEAVE_SYS_DB_DATA");
-                localStorage.removeItem("LEAVE_SYS_DATA");
-                this.db = DB_DEFAULT;
+                localStorage.removeItem("LEAVE_SYS_DATA_V4");
+                this.db = JSON.parse(JSON.stringify(DB_DEFAULT));
                 this.saveDB();
                 alert("تم تهيئة النظام بالكامل وتنزيل نسخة احتياطية.");
                 location.reload();
             }
         },
 
-        // --- 6. استئذاناتي ---
+        // --- استئذاناتي ---
         renderMyRequestsView(container) {
             const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
             container.innerHTML = `
@@ -1502,7 +1491,7 @@
             }
         },
 
-        // --- 7. صندوق الاعتمادات ---
+        // --- صندوق الاعتمادات ---
         renderApprovalsView(container) {
             const pendingReqs = this.db.requests.filter(r => r.status === 'pending');
             container.innerHTML = `
@@ -1633,7 +1622,7 @@
             alert(status === 'approved' ? "تمت الموافقة على الطلب بنجاح." : "تم تسجيل رفض الطلب وتوثيق السبب للموظف.");
         },
 
-        // --- 8. التفويض الإداري ---
+        // --- التفويض الإداري ---
         renderDelegationsView(container) {
             container.innerHTML = `
                 <div class="flex justify-between items-center mb-6">
@@ -1748,7 +1737,7 @@
             }
         },
 
-        // --- 9. إدارة الموظفين ---
+        // --- إدارة الموظفين ---
         renderAdminUsersView(container) {
             container.innerHTML = `
                 <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
@@ -2034,7 +2023,7 @@
             }
         },
 
-        // --- 10. طلبات استعادة الكلمات ---
+        // --- استعادة كلمات المرور ---
         renderAdminResetsView(container) {
             container.innerHTML = `
                 <div class="mb-6">
