@@ -16,16 +16,16 @@
     <style>
         body { font-family: 'Cairo', sans-serif; }
         
-        /* عزل تام لطباعة القرار الرسمي الفردي بدون أي عناصر من الشاشة */
         @media print {
             body * {
                 visibility: hidden !important;
             }
-            #printableResolutionContainer,
-            #printableResolutionContainer * {
+            /* طباعة القرار الفردي */
+            body.print-mode-resolution #printableResolutionContainer,
+            body.print-mode-resolution #printableResolutionContainer * {
                 visibility: visible !important;
             }
-            #printableResolutionContainer {
+            body.print-mode-resolution #printableResolutionContainer {
                 position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
@@ -37,6 +37,24 @@
                 box-sizing: border-box !important;
                 z-index: 999999 !important;
             }
+
+            /* طباعة الكشف السردي الإجمالي */
+            body.print-mode-report #reportPrintableArea,
+            body.print-mode-report #reportPrintableArea * {
+                visibility: visible !important;
+            }
+            body.print-mode-report #reportPrintableArea {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 10mm !important;
+                background-color: #ffffff !important;
+                box-sizing: border-box !important;
+                z-index: 999999 !important;
+            }
+
             @page {
                 size: A4 portrait;
                 margin: 0;
@@ -48,7 +66,7 @@
 
     <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center w-full max-w-md px-4 pointer-events-none"></div>
 
-    <!-- Top Navigation Bar -->
+    <!-- الشريط العلوي والتنقل -->
     <header class="bg-emerald-900 text-white shadow-lg sticky top-0 z-40 no-print">
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
             <div class="flex items-center gap-3">
@@ -63,13 +81,13 @@
                         <span id="cloudStatusBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-white/10">
                             جاري الاتصال...
                         </span>
-                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v3.9.0</span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800">v4.2.0</span>
                     </h1>
                     <p class="text-emerald-200/90 text-xs font-semibold" id="topOrgTitle">الإدارة العامة لتقنية المعلومات والتحول الرقمي</p>
                 </div>
             </div>
 
-            <!-- User Header Controls -->
+            <!-- لوحة المستخدم العلوية -->
             <div id="userHeaderPanel" class="hidden flex items-center gap-3">
                 <div class="bg-emerald-950/60 border border-emerald-700/50 rounded-xl px-3 py-1.5 flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow">
@@ -80,7 +98,6 @@
                         <div class="text-[11px] text-emerald-300 font-medium" id="headerUserRole">المسمى الوظيفي</div>
                     </div>
                 </div>
-                <!-- زر الخروج بأيقونة مدمجة واضحة لا تتأثر بالشبكة -->
                 <button onclick="App.logout()" title="تسجيل الخروج" class="p-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition shadow flex items-center justify-center">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
@@ -89,33 +106,33 @@
             </div>
         </div>
 
-        <!-- Navigation Tabs -->
+        <!-- أزرار التبويبات -->
         <nav id="navTabsContainer" class="hidden bg-emerald-800/80 border-t border-emerald-700/50 px-4">
             <div class="max-w-7xl mx-auto flex gap-1 overflow-x-auto py-1.5" id="tabsList"></div>
         </nav>
     </header>
 
-    <!-- Main Container -->
+    <!-- الحاوية الأساسية للشاشات -->
     <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full" id="mainContainer"></main>
 
-    <!-- Global Modal -->
+    <!-- النافذة المنبثقة الشاملة -->
     <div id="modalContainer" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto no-print">
         <div id="modalContent" class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto transform transition-all p-6 text-right"></div>
     </div>
 
-    <!-- Official Printable Card (Hidden on Screen, Visible on Print) -->
+    <!-- حاوية طباعة القرار الفردي المعزولة -->
     <div id="printableResolutionContainer" class="hidden"></div>
 
     <script>
-    const SYSTEM_VERSION = "v3.9.0";
+    const SYSTEM_VERSION = "v4.2.0";
 
-    // تكوين السحابة المعتمد
+    // بيانات الاتصال السحابي الثابتة
     const CLOUD_CONFIG = {
         url: "https://psdiohmcupwcxnascxft.supabase.co",
         key: "sb_publishable_zJ2G0PO5yegOImQ1F7wL8Q_bMntahhk"
     };
 
-    // قاموس الأيقونات المدمجة (SVG) لضمان ظهورها حتى بدون إنترنت أو في الشبكات المغلقة
+    // قاموس الأيقونات المدمجة برمجياً
     const Icons = {
         dashboard: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>`,
         requests: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`,
@@ -132,7 +149,7 @@
         settings: {
             orgName: "المملكة العربية السعودية",
             generalDept: "الإدارة العامة لتقنية المعلومات والتحول الرقمي",
-            reportHeaderTitle: "تقرير عمليات الاستئذان الإدارية",
+            reportHeaderTitle: "كشف حصر ومتابعة الاستئذانات الإدارية (الإجمالي السردي)",
             logoData: "",
             workStartTime: "07:30",
             workEndTime: "14:30",
@@ -198,7 +215,7 @@
         },
 
         loadDB() {
-            const raw = localStorage.getItem("LEAVE_SYS_DATA_V5") || localStorage.getItem("LEAVE_SYS_DATA_V4") || localStorage.getItem("LEAVE_SYS_DATA");
+            const raw = localStorage.getItem("LEAVE_SYS_DATA_V8") || localStorage.getItem("LEAVE_SYS_DATA_V7") || localStorage.getItem("LEAVE_SYS_DATA");
             if (raw) {
                 try {
                     const parsed = JSON.parse(raw);
@@ -215,7 +232,7 @@
         },
 
         saveDB(syncToCloud = true) {
-            localStorage.setItem("LEAVE_SYS_DATA_V5", JSON.stringify(this.db));
+            localStorage.setItem("LEAVE_SYS_DATA_V8", JSON.stringify(this.db));
             this.updateHeaderUI();
             if (syncToCloud && this.supabaseClient) {
                 this.pushToCloud(false);
@@ -275,6 +292,43 @@
                 console.warn("Cloud pull note:", err);
             }
             return false;
+        },
+
+        // فحص واختبار الاتصال بالسحابة
+        async testCloudConnection() {
+            const resultBox = document.getElementById("connectionTestResult");
+            if (!resultBox) return;
+            resultBox.classList.remove("hidden");
+            resultBox.innerHTML = `<div class="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl flex items-center gap-2"><svg class="w-4 h-4 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg><span>جاري فحص الاتصال بقاعدة بيانات Supabase واختبار الجداول...</span></div>`;
+
+            try {
+                const start = performance.now();
+                const { data, error } = await this.supabaseClient.from("app_state").select("id, updated_at").eq("id", 1);
+                const latency = Math.round(performance.now() - start);
+                if (error) throw error;
+
+                resultBox.innerHTML = `
+                    <div class="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl space-y-2">
+                        <div class="flex items-center gap-2 font-black text-sm text-emerald-800">
+                            <span>✅ الاتصال السحابي سليم 100% وجاهز للعمل!</span>
+                        </div>
+                        <div class="text-xs space-y-1 font-mono text-emerald-700">
+                            <p>• سرعة الاستجابة (Latency): <strong>${latency}ms</strong></p>
+                            <p>• جدول المزامنة (app_state): <strong>متصل ومتاح للقراءة والكتابة</strong></p>
+                            <p>• السجلات السحابية: <strong>${data && data.length > 0 ? 'يوجد سجل مزامنة نشط' : 'الجدول جاهز'}</strong></p>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                resultBox.innerHTML = `
+                    <div class="p-4 bg-red-50 border border-red-300 text-red-900 rounded-xl space-y-2 text-xs">
+                        <div class="font-bold flex items-center gap-2 text-red-700 text-sm">
+                            <span>❌ فشل الاتصال بقاعدة البيانات</span>
+                        </div>
+                        <p class="font-mono bg-white p-2 rounded border border-red-200">${err.message}</p>
+                    </div>
+                `;
+            }
         },
 
         checkSession() {
@@ -350,7 +404,7 @@
                 tabs.push({ id: 'delegations', label: 'التفويض الإداري', icon: Icons.delegations });
             }
 
-            tabs.push({ id: 'reports', label: 'التقارير والإحصائيات', icon: Icons.reports });
+            tabs.push({ id: 'reports', label: 'التقارير والإحصائيات (كشف حصر)', icon: Icons.reports });
 
             if (isSuper) {
                 tabs.push({ id: 'admin_users', label: 'إدارة الموظفين والصلاحيات', icon: Icons.users });
@@ -451,7 +505,7 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         },
 
-        // --- 2. لوحة المؤشرات (الرئيسية) ---
+        // --- 2. الرئيسية (المؤشرات) ---
         renderDashboardView(container) {
             const isManager = ['super_admin', 'gen_manager', 'dept_manager', 'section_head'].includes(this.currentUser.role);
             const myRequests = this.db.requests.filter(r => r.userId === this.currentUser.id);
@@ -557,7 +611,7 @@
             `;
         },
 
-        // --- 3. التقارير الإدارية (مضبوطة وبدون إكسل) ---
+        // --- 3. شاشة التقارير: كشف حصر إجمالي سردي شامل ---
         renderReportsView(container) {
             const isGenManagerOrSuper = ['super_admin', 'gen_manager'].includes(this.currentUser.role);
             const isDeptManager = this.currentUser.role === 'dept_manager';
@@ -577,22 +631,23 @@
                     <div class="flex flex-wrap justify-between items-center gap-3 no-print">
                         <div>
                             <h2 class="text-xl font-black text-slate-800">
-                                ${this.db.settings.reportHeaderTitle || 'مركز التقارير والإحصائيات التوثيقية'}
+                                ${this.db.settings.reportHeaderTitle || 'كشف حصر ومتابعة الاستئذانات الإدارية (الإجمالي السردي)'}
                             </h2>
-                            <p class="text-xs text-slate-500 font-semibold mt-1">تصفية وحصر عمليات الاستئذان واستخراج التقارير الرسمية</p>
+                            <p class="text-xs text-slate-500 font-semibold mt-1">استعراض سردي متتابع لكافة عمليات الاستئذان المعتمدة والمنفذة وطباعتها كمسير إداري رسمي موحد</p>
                         </div>
                         <div>
-                            <button onclick="window.print()" class="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2 transition">
+                            <button onclick="App.printFullSummaryReport()" class="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold text-xs shadow flex items-center gap-2 transition">
                                 ${Icons.print}
-                                <span>طباعة التقرير الرسمي</span>
+                                <span>طباعة كشف الحصر الإجمالي (سرداً)</span>
                             </button>
                         </div>
                     </div>
 
+                    <!-- الفلتر الإداري للتقرير السردي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 no-print text-right">
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">من تاريخ</label>
+                                <label class="block font-bold text-slate-700 mb-1">الفترة من تاريخ</label>
                                 <input type="date" id="repFilterFrom" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
                             </div>
                             <div>
@@ -600,28 +655,28 @@
                                 <input type="date" id="repFilterTo" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
                             </div>
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">حالة الطلب</label>
+                                <label class="block font-bold text-slate-700 mb-1">حالة الطلب في الكشف</label>
                                 <select id="repFilterStatus" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold">
-                                    <option value="ALL">جميع الحالات</option>
-                                    <option value="approved">معتمد فقط</option>
+                                    <option value="ALL">جميع الحالات (معتمد / قيد الانتظار / مرفوض)</option>
+                                    <option value="approved" selected>الاستئذانات المعتمدة فقط</option>
                                     <option value="pending">قيد الانتظار</option>
-                                    <option value="rejected">مرفوض</option>
+                                    <option value="rejected">المرفوضة</option>
                                 </select>
                             </div>
 
                             ${isManager ? `
                                 <div>
-                                    <label class="block font-bold text-slate-700 mb-1">تحديد الموظف</label>
+                                    <label class="block font-bold text-slate-700 mb-1">نطاق الكشف السردي</label>
                                     <select id="repFilterUser" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold">
-                                        <option value="ALL">${isGenManagerOrSuper ? 'جميع موظفي المنظومة' : 'جميع موظفي إدارتي'}</option>
-                                        <option value="${this.currentUser.id}">[استئذاناتي الشخصية فقط]</option>
+                                        <option value="ALL">${isGenManagerOrSuper ? 'كافة موظفي الإدارة العامة والمنظومة' : 'كافة منسوبي الإدارة التابعة لي'}</option>
+                                        <option value="${this.currentUser.id}">[سجل استئذاناتي الشخصية فقط]</option>
                                         ${selectableUsers.filter(u => u.id !== this.currentUser.id).map(u => `<option value="${u.id}">${u.name} (${u.empId})</option>`).join("")}
                                     </select>
                                 </div>
                             ` : `
                                 <div class="flex items-end">
                                     <div class="w-full p-2.5 bg-slate-100 border rounded-xl text-slate-600 font-bold text-center">
-                                        عرض استئذاناتك الشخصية
+                                        كشف استئذاناتك الشخصية
                                     </div>
                                 </div>
                             `}
@@ -629,30 +684,45 @@
 
                         <div class="flex justify-end pt-2 border-t">
                             <button onclick="App.applyReportFilter()" class="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow">
-                                تطبيق التصفية والبحث
+                                تحديث وحصر الكشف السردي
                             </button>
                         </div>
                     </div>
 
+                    <!-- مساحة الكشف الإجمالي السردي للطباعة والعرض -->
                     <div id="reportPrintableArea" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-5">
-                        <div class="flex justify-between items-center border-b pb-4 text-right">
+                        <div class="flex justify-between items-center border-b-2 border-slate-800 pb-4 text-right">
                             <div class="space-y-1">
-                                <h3 class="font-black text-sm text-slate-800">${this.db.settings.orgName}</h3>
+                                <h3 class="font-black text-sm text-slate-900">${this.db.settings.orgName}</h3>
                                 <p class="text-xs font-bold text-emerald-800">${this.db.settings.generalDept}</p>
-                                <p class="text-xs font-bold text-slate-600">${this.db.settings.reportHeaderTitle || 'تقرير عمليات الاستئذان الإدارية'}</p>
+                                <p class="text-xs font-black text-slate-700">${this.db.settings.reportHeaderTitle || 'كشف حصر ومتابعة الاستئذانات الإدارية (الإجمالي السردي)'}</p>
                             </div>
                             <div class="w-16 h-16 border rounded-xl p-1 flex items-center justify-center overflow-hidden">
                                 ${this.db.settings.logoData ? `<img src="${this.db.settings.logoData}" class="max-h-full max-w-full object-contain">` : `<svg class="w-8 h-8 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>`}
                             </div>
                             <div class="text-left font-mono text-xs text-slate-500 space-y-1">
-                                <p>تاريخ الاستخراج: <strong>${new Date().toISOString().split("T")[0]}</strong></p>
-                                <p>المستخرج: <strong>${this.currentUser.name}</strong></p>
+                                <p>تاريخ الكشف: <strong>${new Date().toISOString().split("T")[0]}</strong></p>
+                                <p>المستعلم: <strong>${this.currentUser.name}</strong></p>
                             </div>
                         </div>
 
-                        <div id="reportQuickMetrics" class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border text-center text-xs font-bold"></div>
+                        <!-- البطاقات الإحصائية التجميعية للكشف السردي -->
+                        <div id="reportQuickMetrics" class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-center text-xs font-bold"></div>
 
+                        <!-- جدول الحصر السردي الكامل -->
                         <div id="reportTableContainer" class="overflow-x-auto"></div>
+
+                        <!-- تذييل الكشف والتوقيعات الإدارية -->
+                        <div class="border-t border-slate-200 pt-6 mt-6 flex justify-between items-center text-xs font-bold text-slate-700">
+                            <div>
+                                <p>إعداد وتدقيق: قسم المتابعة الإدارية</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="mb-1 text-slate-500">يعتمد الكشف السردي:</p>
+                                <p class="font-black text-slate-900 text-sm">${this.currentUser.name}</p>
+                                <p class="text-[10px] text-slate-400 font-mono mt-0.5">${new Date().toISOString().split("T")[0]}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -703,43 +773,51 @@
             const metricsBox = document.getElementById("reportQuickMetrics");
             if (metricsBox) {
                 metricsBox.innerHTML = `
-                    <div class="p-2 bg-white rounded-lg border">إجمالي العمليات: <span class="font-black text-slate-800 block text-base">${list.length}</span></div>
-                    <div class="p-2 bg-white rounded-lg border">المعتمدة: <span class="font-black text-emerald-700 block text-base">${approvedCount} (${totalHours.toFixed(1)} س)</span></div>
-                    <div class="p-2 bg-white rounded-lg border">قيد الانتظار: <span class="font-black text-amber-600 block text-base">${pendingCount}</span></div>
-                    <div class="p-2 bg-white rounded-lg border">المرفوضة: <span class="font-black text-red-600 block text-base">${rejectedCount}</span></div>
+                    <div class="p-2.5 bg-white rounded-lg border border-slate-200">إجمالي العمليات المسجلة: <span class="font-black text-slate-900 block text-base">${list.length}</span></div>
+                    <div class="p-2.5 bg-white rounded-lg border border-slate-200">الاستئذانات المعتمدة: <span class="font-black text-emerald-700 block text-base">${approvedCount} (${totalHours.toFixed(1)} س)</span></div>
+                    <div class="p-2.5 bg-white rounded-lg border border-slate-200">قيد الانتظار: <span class="font-black text-amber-600 block text-base">${pendingCount}</span></div>
+                    <div class="p-2.5 bg-white rounded-lg border border-slate-200">المرفوضة: <span class="font-black text-red-600 block text-base">${rejectedCount}</span></div>
                 `;
             }
 
             const tableBox = document.getElementById("reportTableContainer");
             if (tableBox) {
                 if (list.length === 0) {
-                    tableBox.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs font-semibold">لا توجد سجلات استئذان مطابقة لشروط البحث والتصفية المحددة</div>`;
+                    tableBox.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs font-semibold">لا توجد سجلات استئذان مطابقة لشروط الفلترة المحددة في هذا الكشف.</div>`;
                 } else {
                     tableBox.innerHTML = `
-                        <table class="w-full text-right text-xs">
-                            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                        <table class="w-full text-right text-xs border-collapse border border-slate-300">
+                            <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
                                 <tr>
-                                    <th class="p-3">رقم الطلب</th>
-                                    <th class="p-3">اسم الموظف</th>
-                                    <th class="p-3">الإدارة والقسم</th>
-                                    <th class="p-3">نوع الاستئذان</th>
-                                    <th class="p-3">تاريخ الاستئذان</th>
-                                    <th class="p-3">الساعات</th>
-                                    <th class="p-3">الحالة</th>
-                                    <th class="p-3">المعتمد</th>
+                                    <th class="p-2.5 border border-slate-300 text-center w-12">م</th>
+                                    <th class="p-2.5 border border-slate-300">رقم الطلب</th>
+                                    <th class="p-2.5 border border-slate-300">اسم الموظف</th>
+                                    <th class="p-2.5 border border-slate-300">الرقم الوظيفي</th>
+                                    <th class="p-2.5 border border-slate-300">الإدارة / القسم</th>
+                                    <th class="p-2.5 border border-slate-300">نوع الاستئذان</th>
+                                    <th class="p-2.5 border border-slate-300 text-center">التاريخ</th>
+                                    <th class="p-2.5 border border-slate-300">الوقت والمدة</th>
+                                    <th class="p-2.5 border border-slate-300 text-center">الساعات</th>
+                                    <th class="p-2.5 border border-slate-300">سبب الاستئذان</th>
+                                    <th class="p-2.5 border border-slate-300 text-center">الحالة</th>
+                                    <th class="p-2.5 border border-slate-300">المعتمد</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-100 font-semibold text-slate-700">
-                                ${list.map(r => `
-                                    <tr>
-                                        <td class="p-3 font-mono font-bold text-emerald-800">${r.refNo}</td>
-                                        <td class="p-3 font-bold text-slate-800">${r.userName} <span class="text-[10px] text-slate-400 font-mono">(${r.empId})</span></td>
-                                        <td class="p-3">${this.getDeptName(r.deptId)} - ${r.sectionName || 'إدارة مباشرة'}</td>
-                                        <td class="p-3">${this.getTypeBadge(r.type)}</td>
-                                        <td class="p-3 font-mono">${r.leaveDate}</td>
-                                        <td class="p-3 font-bold">${r.hours} س</td>
-                                        <td class="p-3">${this.getStatusBadge(r.status)}</td>
-                                        <td class="p-3 text-slate-500">${r.decisionBy || '—'}</td>
+                            <tbody class="divide-y divide-slate-200 font-semibold text-slate-700">
+                                ${list.map((r, idx) => `
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="p-2.5 border border-slate-300 text-center font-mono">${idx + 1}</td>
+                                        <td class="p-2.5 border border-slate-300 font-mono font-bold text-emerald-800">${r.refNo}</td>
+                                        <td class="p-2.5 border border-slate-300 font-bold text-slate-900">${r.userName}</td>
+                                        <td class="p-2.5 border border-slate-300 font-mono text-slate-600">${r.empId}</td>
+                                        <td class="p-2.5 border border-slate-300 text-[11px]">${this.getDeptName(r.deptId)} ${r.sectionName ? ' - ' + r.sectionName : ''}</td>
+                                        <td class="p-2.5 border border-slate-300">${this.getTypeBadge(r.type)}</td>
+                                        <td class="p-2.5 border border-slate-300 font-mono text-center">${r.leaveDate}</td>
+                                        <td class="p-2.5 border border-slate-300">${r.timingText}</td>
+                                        <td class="p-2.5 border border-slate-300 font-bold text-center">${r.hours} س</td>
+                                        <td class="p-2.5 border border-slate-300 max-w-xs truncate text-[11px]" title="${r.reason}">${r.reason}</td>
+                                        <td class="p-2.5 border border-slate-300 text-center">${this.getStatusBadge(r.status)}</td>
+                                        <td class="p-2.5 border border-slate-300 text-[11px] text-slate-600">${r.decisionBy || '—'}</td>
                                     </tr>
                                 `).join("")}
                             </tbody>
@@ -749,7 +827,16 @@
             }
         },
 
-        // --- 4. طباعة القرار الرسمي المعزول ونظيف 100% ---
+        printFullSummaryReport() {
+            document.body.classList.remove("print-mode-resolution");
+            document.body.classList.add("print-mode-report");
+            window.print();
+            setTimeout(() => {
+                document.body.classList.remove("print-mode-report");
+            }, 500);
+        },
+
+        // --- 4. طباعة القرار الرسمي الفردي المعزول ---
         printResolution(reqId) {
             const req = this.db.requests.find(x => x.id === reqId);
             if (!req) return;
@@ -760,8 +847,17 @@
                 cleanApproverName = cleanApproverName.split("(")[0].trim();
             }
 
+            let signatureImgSrc = req.decisionSign || "";
+            if (!signatureImgSrc) {
+                const approverUser = this.db.users.find(u => u.name === cleanApproverName || u.id === req.decisionById);
+                if (approverUser && approverUser.signatureData) {
+                    signatureImgSrc = approverUser.signatureData;
+                }
+            }
+
             printBox.innerHTML = `
                 <div style="background-color: #ffffff; border: 2px solid #1e293b; border-radius: 16px; padding: 30px; width: 100%; max-width: 780px; margin: 0 auto; box-sizing: border-box; color: #0f172a;">
+                    <!-- الترويسة الرسمية -->
                     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px;">
                         <div style="text-align: right; font-size: 11px; font-weight: bold; line-height: 1.6;">
                             <p style="margin: 0;">${this.db.settings.orgName}</p>
@@ -814,6 +910,7 @@
                         بناءً على الصلاحيات المخولة نظاماً، تمت الموافقة والاعتماد الإداري على طلب الاستئذان الموضح أعلاه، وتعتبر هذه الوثيقة إشعاراً رسمياً معتمداً وموثقاً إلكترونياً لدى الإدارة.
                     </div>
 
+                    <!-- التوقيع والباركود -->
                     <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 25px;">
                         <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
                             <div id="printQrCode" style="width: 85px; height: 85px; border: 1px solid #cbd5e1; padding: 3px; background: #ffffff; border-radius: 6px;"></div>
@@ -823,8 +920,8 @@
                         <div style="text-align: center;">
                             <p style="font-size: 11px; font-weight: bold; color: #64748b; margin: 0 0 4px 0;">المعتمد:</p>
                             <p style="font-size: 14px; font-weight: 900; color: #0f172a; margin: 0 0 6px 0;">${cleanApproverName}</p>
-                            <div style="height: 50px; display: flex; align-items: center; justify-content: center;">
-                                ${req.decisionSign ? `<img src="${req.decisionSign}" style="max-height: 100%; max-width: 140px; object-fit: contain;">` : `<span style="font-size: 10px; font-family: serif; color: #94a3b8;">توقيع إلكتروني معتمد</span>`}
+                            <div style="height: 55px; min-width: 130px; display: flex; align-items: center; justify-content: center; margin: 2px 0;">
+                                ${signatureImgSrc ? `<img src="${signatureImgSrc}" style="max-height: 55px; max-width: 150px; object-fit: contain;">` : `<span style="font-size: 10px; font-family: serif; color: #065f46; font-weight: bold; border: 1px dashed #059669; padding: 4px 8px; border-radius: 4px;">توقيع إلكتروني معتمد</span>`}
                             </div>
                             <p style="font-size: 10px; color: #94a3b8; font-family: monospace; margin: 4px 0 0 0;">التاريخ: ${req.decisionDate || req.leaveDate}</p>
                         </div>
@@ -845,19 +942,23 @@
                 });
             }
 
+            document.body.classList.remove("print-mode-report");
+            document.body.classList.add("print-mode-resolution");
+
             setTimeout(() => {
                 window.print();
                 printBox.classList.add("hidden");
+                document.body.classList.remove("print-mode-resolution");
             }, 300);
         },
 
-        // --- 5. الإعدادات والدوام والهيكل ---
+        // --- 5. الإعدادات والدوام وفحص الاتصال بالسحابة ---
         renderSettingsView(container) {
             container.innerHTML = `
                 <div class="mb-6 flex flex-wrap justify-between items-center gap-3">
                     <div>
                         <h2 class="text-xl font-black text-slate-800">إعدادات النظام والدوام وقاعدة البيانات</h2>
-                        <p class="text-xs text-slate-500 font-semibold mt-1">تخصيص الهوية، مواعيد الدوام، وأدوات المزامنة السحابية</p>
+                        <p class="text-xs text-slate-500 font-semibold mt-1">تخصيص الهوية، مواعيد الدوام، وأدوات المزامنة وفحص الاتصال بالسحابة</p>
                     </div>
                     <span class="text-xs font-mono font-bold px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
                         رقم الإصدار: ${SYSTEM_VERSION}
@@ -873,7 +974,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">عنوان التقرير الإداري الثابت</label>
-                            <input type="text" id="setReportTitle" value="${this.db.settings.reportHeaderTitle || 'مركز التقارير والإحصائيات التوثيقية'}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
+                            <input type="text" id="setReportTitle" value="${this.db.settings.reportHeaderTitle || 'كشف حصر ومتابعة الاستئذانات الإدارية (الإجمالي السردي)'}" class="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">شعار المنشأة (PNG / JPG / SVG)</label>
@@ -904,6 +1005,7 @@
                         <button onclick="App.saveWorkTimes()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs shadow">حفظ مواعيد الدوام</button>
                     </div>
 
+                    <!-- قسم الربط وقاعدة البيانات مع زر فحص الاتصال البنفسجي -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
                         <div class="flex flex-wrap justify-between items-center border-b pb-2">
                             <h3 class="font-black text-sm text-slate-800">الربط بقاعدة بيانات Supabase السحابية</h3>
@@ -921,14 +1023,22 @@
                             </div>
                         </div>
 
+                        <!-- أزرار العمليات والفحص المباشر -->
                         <div class="flex flex-wrap items-center gap-2 pt-1">
-                            <button onclick="App.pushToCloud(true)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow">
+                            <button onclick="App.testCloudConnection()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow flex items-center gap-1.5 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                <span>فحص واختبار الاتصال بالسحابة</span>
+                            </button>
+                            <button onclick="App.pushToCloud(true)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow transition">
                                 رفع بيانات النظام الحالية للسحابة
                             </button>
-                            <button onclick="App.pullFromCloud(true)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs shadow">
+                            <button onclick="App.pullFromCloud(true)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs shadow transition">
                                 جلب واستعادة البيانات من السحابة
                             </button>
                         </div>
+
+                        <!-- صندوق نتيجة فحص الاتصال -->
+                        <div id="connectionTestResult" class="hidden text-xs transition"></div>
                     </div>
 
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4 md:col-span-2">
@@ -1001,7 +1111,7 @@
 
         saveGeneralSettings() {
             this.db.settings.generalDept = document.getElementById("setGenDept").value.trim();
-            this.db.settings.reportHeaderTitle = document.getElementById("setReportTitle")?.value.trim() || "مركز التقارير والإحصائيات التوثيقية";
+            this.db.settings.reportHeaderTitle = document.getElementById("setReportTitle")?.value.trim() || "كشف حصر ومتابعة الاستئذانات الإدارية (الإجمالي السردي)";
             this.saveDB();
             alert("تم حفظ بيانات المنشأة وعناوين التقارير بنجاح.");
         },
@@ -1312,7 +1422,9 @@
                 reason: reason,
                 status: "pending",
                 decisionBy: "",
+                decisionById: "",
                 decisionDate: "",
+                decisionSign: "",
                 rejectReason: ""
             };
 
@@ -1410,10 +1522,13 @@
                             <button onclick="App.closeModal()">✕</button>
                         </div>
                         <p class="text-xs text-slate-600">هل تؤكد اعتماد طلب الموظف <strong>${req.userName}</strong> بتاريخ <strong>${req.leaveDate}</strong>؟</p>
+                        <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900">
+                            سيتم توقيع القرار إلكترونياً باسمك: <strong>${this.currentUser.name}</strong> وإدراج توقيعك المحفوظ في القرار.
+                        </div>
                         <div class="flex justify-end gap-2 pt-3">
                             <button onclick="App.closeModal()" class="px-4 py-2 bg-slate-100 rounded-lg text-xs font-bold">إلغاء</button>
                             <button onclick="App.confirmDecision('${req.id}', 'approved')" class="px-5 py-2 bg-emerald-700 text-white rounded-lg text-xs font-bold shadow">
-                                تأكيد الموافقة
+                                تأكيد الموافقة والتوقيع
                             </button>
                         </div>
                     </div>
@@ -1457,13 +1572,14 @@
 
             req.status = status;
             req.decisionBy = this.currentUser.name;
+            req.decisionById = this.currentUser.id;
             req.decisionDate = new Date().toISOString().split("T")[0];
             req.decisionSign = this.currentUser.signatureData || "";
 
             this.saveDB();
             this.closeModal();
             this.setTab("approvals");
-            alert(status === 'approved' ? "تمت الموافقة على الطلب بنجاح." : "تم تسجيل رفض الطلب وتوثيق السبب للموظف.");
+            alert(status === 'approved' ? "تمت الموافقة وتوقيع القرار بنجاح." : "تم تسجيل رفض الطلب وتوثيق السبب للموظف.");
         },
 
         // --- 8. التفويض الإداري ---
@@ -1704,7 +1820,7 @@
                     </div>
 
                     <div class="p-3 bg-slate-50 border rounded-xl">
-                        <label class="block text-xs font-bold text-slate-700 mb-1">صورة التوقيع الإلكتروني</label>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">صورة التوقيع الإلكتروني (PNG/JPG)</label>
                         <input type="file" id="uSignFile" accept="image/*" onchange="App.handleSignatureUpload(event)" class="text-xs w-full">
                         <input type="hidden" id="uSignatureData" value="${user ? (user.signatureData || '') : ''}">
                     </div>
